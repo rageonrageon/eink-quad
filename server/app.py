@@ -77,6 +77,7 @@ DEFAULTS = {
     "odds_style": "spread",      # spread | moneyline | winpct (hockey/baseball always moneyline)
     "radar_nm": 25,
     "iss": True, "launch": True,
+    "headline_bar": True,        # the line under the date (messages and severe alerts still show when off)
     "llm_brief": True,
     "llm_brief_min": 60,
     "llm_model": "claude-haiku-4-5-20251001",
@@ -310,7 +311,10 @@ class Board:
         new_body = new.crop((0, R.HEAD_H, R.W, R.H))
         changed = ImageChops.logical_xor(old_body, new_body).getbbox() is not None
         self.render_ms = int((time.time() - t0) * 1000)
-        full = full or self.force_full or (
+        bar_now = R.has_strip(self.ctx())
+        bar_moved = bar_now != getattr(self, "bar_prev", bar_now)
+        self.bar_prev = bar_now
+        full = full or bar_moved or self.force_full or (
             cfg["full_every_min"] and time.time() - self.last_full > cfg["full_every_min"] * 60
             and changed and not quiet_now())
         if changed and cfg.get("crisp") and (major or self.partials >= cfg.get("max_partials", 4)):
@@ -326,7 +330,7 @@ class Board:
             else:
                 self._commit([(new, 0, True)], why)
         else:
-            regions = R.region_frames(self.final, new)
+            regions = R.region_frames(self.final, new, R.has_strip(self.ctx()))
             # Many changed regions (a page switch) read better as one sweep than
             # as five sequential ~1s partials.
             if len(regions) > 3 or not regions:

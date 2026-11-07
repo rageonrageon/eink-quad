@@ -22,6 +22,7 @@ class LunchDay:
     items: list = field(default_factory=list)
     closed: str = ""
     source: str = ""         # restaurant for catered days, e.g. "Godfather's"
+    weekend: bool = False
     label: str = ""          # TODAY / TOMORROW / MONDAY, filled in by upcoming()
 
 
@@ -45,6 +46,23 @@ def load(path: str = PATH) -> dict:
         elif isinstance(v, list) and v:
             days[d] = LunchDay(d, items=[str(x) for x in v])
     return days
+
+
+def days_from(now: float, n: int = 5, path: str = PATH) -> list:
+    """n consecutive calendar days starting today, weekends included.
+
+    Weekends come back blank (items empty, closed empty, weekend=True); a weekday
+    with no data comes back blank too, so the caller can say the menu is missing."""
+    days = load(path)
+    today = dt.date.fromtimestamp(now)
+    out = []
+    for i in range(n):
+        d = today + dt.timedelta(days=i)
+        r = days.get(d) or LunchDay(d)
+        r.weekend = d.weekday() >= 5
+        r.label = "TODAY" if i == 0 else d.strftime("%a").upper()
+        out.append(r)
+    return out
 
 
 def upcoming(now: float, n: int = 2, horizon_days: int = 14, path: str = PATH) -> list:

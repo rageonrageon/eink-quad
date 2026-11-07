@@ -134,7 +134,8 @@ td:first-child{font-weight:600;white-space:nowrap}
       </div>
       <label style="margin-top:10px">Tickers (Yahoo symbols, comma separated)<input name="tickers" placeholder="^GSPC, ^DJI, ^IXIC, SOXL"></label>
       <p class="note">^GSPC = S&amp;P 500, ^DJI = Dow, ^IXIC = Nasdaq, ^RUT = Russell 2000, ^VIX, BTC-USD. Four or five fit best.</p>
-      <label class="inline" style="margin-top:12px"><input type="checkbox" name="llm_brief"> Claude writes a one-line daily brief (top bar)</label>
+      <label class="inline" style="margin-top:12px"><input type="checkbox" name="headline_bar"> Show the headline bar under the date (off: panels use the space; posted messages and severe weather alerts still appear)</label>
+      <label class="inline"><input type="checkbox" name="llm_brief"> Claude writes a one-line daily brief (top bar)</label>
       <div class="grid2" style="margin-top:8px">
         <label>Rewrite every (min)<input type="number" name="llm_brief_min" min="15" max="720"></label>
         <label>Model<input name="llm_model"></label>

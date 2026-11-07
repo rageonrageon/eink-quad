@@ -346,6 +346,8 @@ class Ctx:
     notes_new: int = 0
     stale: dict = field(default_factory=dict)
     lunch: list = field(default_factory=list)    # lunch.LunchDay rows
+    lunch_week: list = field(default_factory=list)   # 5 consecutive days from today
+    activities: dict = field(default_factory=dict)   # {date: [("8:00 AM", "Volleyball practice"), ...]}
 
 
 def _deg(v):
@@ -830,6 +832,55 @@ def panel_lunch(ctx: Ctx, size):
     return c
 
 
+def panel_lunch_week(ctx: Ctx, size):
+    """The whole right half: five consecutive days, one row each."""
+    c, d = canvas(size)
+    w, h = size
+    rows = ctx.lunch_week[:5]
+    if not rows:
+        text(d, (w / 2, h / 2), "No lunch menu loaded", F("sb", 20), anchor="mm")
+        return c
+    rh = (h - 4) / 5
+    x0 = 92                                  # text column
+    for i, r in enumerate(rows):
+        y = 2 + i * rh
+        if r.label == "TODAY":
+            pill(d, 12, y + 9, "TODAY", F("cb", 19), pad=6, h=24)
+        else:
+            text(d, (12, y + 9), r.label, F("cb", 22))
+        dtxt = f"{r.date:%b} {r.date.day}"
+        text(d, (12, y + 40), (f"{r.date:%a} " + dtxt) if r.label == "TODAY" else dtxt, F("cm", 16))
+        tw_ = w - x0 - 12
+        acts = ctx.activities.get(r.date, [])
+        ty = y + 8
+        if r.closed:
+            text(d, (x0, y + 10), r.closed, F("sb", 21))
+            ty = y + 40
+        elif r.items:
+            fm = F("sb", 18)
+            for ln in wrap(d, r.items[0], fm, tw_, 2):
+                text(d, (x0, ty), ln, fm)
+                ty += 21
+            # keep room for the activity lines: drop the "or" option if they would not fit
+            if len(r.items) > 1 and ty + 19 + 19 * len(acts) <= y + rh:
+                fa = fit_font(d, "or " + r.items[1], "m", tw_, [16, 15, 14])
+                text(d, (x0, ty + 1), ellipsize(d, "or " + r.items[1], fa, tw_), fa)
+                ty += 19
+            if r.source:
+                text(d, (w - 12, y + 10), r.source, F("csb", 15), anchor="ra")
+        elif not r.weekend:
+            text(d, (x0, y + 10), "Menu not loaded", F("m", 16))
+            ty = y + 34
+        for tm, title in acts:
+            tf, nf = F("cb", 17), F("m", 17)
+            text(d, (x0, ty), tm, tf)
+            text(d, (x0 + tw(d, tm, tf) + 8, ty), ellipsize(d, title, nf, tw_ - tw(d, tm, tf) - 8), nf)
+            ty += 20
+        if i < len(rows) - 1:
+            dotted(d, 10, w - 10, int(y + rh - 1), 3)
+    return c
+
+
 PANELS = {"weather": panel_weather, "news": panel_news, "sports": panel_sports, "sky": panel_sky,
           "lunch": panel_lunch}
 
@@ -876,17 +927,27 @@ def header(ctx: Ctx):
     return c
 
 
+def _severe_alert(ctx):
+    return ctx.weather is not None and ctx.weather.alerts and ctx.weather.alerts[0][2] in ("Extreme", "Severe")
+
+
+def has_strip(ctx: Ctx) -> bool:
+    """The bar under the date. With headline_bar off it only appears for a posted
+    message or a severe weather alert, and the panels use the space otherwise."""
+    return bool(ctx.cfg.get("headline_bar", True) or ctx.sticky or _severe_alert(ctx))
+
+
 def strip(ctx: Ctx):
     """The one line under the header: sticky message > severe alert > brief."""
     c, d = canvas((W, STRIP_H))
     msg, bold = "", False
     if ctx.sticky:
         msg, bold = ctx.sticky, True
-    elif ctx.weather is not None and ctx.weather.alerts and ctx.weather.alerts[0][2] in ("Extreme", "Severe"):
+    elif _severe_alert(ctx):
         msg, bold = ctx.weather.alerts[0][1], True
-    elif ctx.brief:
+    elif ctx.brief and ctx.cfg.get("headline_bar", True):
         msg = ctx.brief
-    if not msg:
+    if not msg and ctx.cfg.get("headline_bar", True):
         up = _next_up(ctx)
         msg = up or ""
     if bold:
@@ -912,25 +973,45 @@ def _next_up(ctx):
     return ""
 
 
-def slot_boxes():
-    return [(0, GRID_Y, CELL_W, GRID_Y + CELL_H), (CELL_W, GRID_Y, W, GRID_Y + CELL_H),
-            (0, GRID_Y + CELL_H, CELL_W, H), (CELL_W, GRID_Y + CELL_H, W, H)]
+def grid_geom(bar: bool = True):
+    """(top of the panel grid, height of one cell). Without the bar the grid grows."""
+    gy = GRID_Y if bar else HEAD_H
+    return gy, (H - gy) // 2
+
+
+def slot_boxes(bar: bool = True):
+    gy, ch = grid_geom(bar)
+    return [(0, gy, CELL_W, gy + ch), (CELL_W, gy, W, gy + ch),
+            (0, gy + ch, CELL_W, H), (CELL_W, gy + ch, W, H)]
 
 
 def compose_quad(ctx: Ctx, panels: dict | None = None) -> Image.Image:
     """panels: optional {name: prerendered L image} to reuse (not re-render)."""
     c = Image.new("L", (W, H), PAPER)
     c.paste(header(ctx), (0, 0))
-    c.paste(strip(ctx), (0, HEAD_H))
+    bar = has_strip(ctx)
+    gy, ch = grid_geom(bar)
+    if bar:
+        c.paste(strip(ctx), (0, HEAD_H))
+    if ctx.cfg.get("layout") == "week":
+        # weather and sports on the left, five days of lunch down the whole right side
+        bx = slot_boxes(bar)
+        c.paste(panel_weather(ctx, (CELL_W, ch)), bx[0][:2])
+        c.paste(panel_sports(ctx, (CELL_W, ch)), bx[2][:2])
+        c.paste(panel_lunch_week(ctx, (CELL_W, 2 * ch)), bx[1][:2])
+        d = ImageDraw.Draw(c)
+        d.line((CELL_W - 1, gy + 6, CELL_W - 1, H - 6), fill=INK, width=2)
+        d.line((6, gy + ch, CELL_W - 6, gy + ch), fill=INK, width=2)
+        return c
     slots = ctx.cfg.get("slots", ["weather", "news", "sports", "sky"])
-    for name, box in zip(slots, slot_boxes()):
+    for name, box in zip(slots, slot_boxes(bar)):
         img = (panels or {}).get(name)
         if img is None:
-            img = PANELS[name](ctx, (CELL_W, CELL_H))
+            img = PANELS[name](ctx, (CELL_W, ch))
         c.paste(img, box[:2])
     d = ImageDraw.Draw(c)
-    d.line((CELL_W - 1, GRID_Y + 6, CELL_W - 1, H - 6), fill=INK, width=2)
-    d.line((6, GRID_Y + CELL_H, W - 6, GRID_Y + CELL_H), fill=INK, width=2)
+    d.line((CELL_W - 1, gy + 6, CELL_W - 1, H - 6), fill=INK, width=2)
+    d.line((6, gy + ch, W - 6, gy + ch), fill=INK, width=2)
     return c
 
 
@@ -1239,12 +1320,12 @@ def encode_reel(frames) -> bytes:
     return bytes(out)
 
 
-def region_frames(prev: Image.Image, new: Image.Image):
+def region_frames(prev: Image.Image, new: Image.Image, bar: bool = True):
     """Split one update into per-region partial refreshes (header, strip, each
     slot), so a change in two corners refreshes two small windows instead of
     one window spanning the whole screen. Each partial costs ~1s whatever its
     size, but a smaller window ghosts less."""
-    boxes = [(0, 0, W, HEAD_H), (0, HEAD_H, W, GRID_Y)] + slot_boxes()
+    boxes = [(0, 0, W, HEAD_H)] + ([(0, HEAD_H, W, GRID_Y)] if bar else []) + slot_boxes(bar)
     frames = []
     cur = prev.copy()
     for b in boxes:
