@@ -187,7 +187,7 @@ def row_note(r):
 
 # ---------------------------------------------------------------- the board
 
-PAGES = ["quad", "weather", "news", "sports", "sky"]
+PAGES = ["quad", "weather", "news", "sports", "lunch"]
 
 
 class Board:
@@ -253,7 +253,7 @@ class Board:
             self.snap["event"] = events.next_event()
             self.snap["upcoming"] = events.upcoming()
         elif name == "lunch":
-            self.snap["lunch"] = lunch.upcoming(time.time())
+            self.snap["lunch"] = lunch.upcoming(time.time(), n=5)
         elif name == "brief":
             try:
                 h = time.localtime().tm_hour

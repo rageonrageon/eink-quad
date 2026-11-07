@@ -42,8 +42,6 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 td{padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 td:first-child{font-weight:600;white-space:nowrap}
 .log{max-height:220px;overflow:auto;font:13px/1.5 ui-monospace,Menlo,monospace;color:var(--mute)}
-.thumbs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.thumbs img{width:100%;border:1px solid var(--line);border-radius:4px;cursor:pointer;background:#fff}
 .save{position:sticky;bottom:12px;display:flex;justify-content:flex-end;gap:10px;align-items:center}
 .toast{font-size:13px;color:var(--mute)}
 .hide{display:none}
@@ -81,13 +79,7 @@ td:first-child{font-weight:600;white-space:nowrap}
       <p class="note">Shows in the bar under the date, and the LED blinks until someone presses a button.</p>
     </section>
 
-    <section class="card">
-      <h2>Preview pages</h2>
-      <p class="note">Rendered from the same data the board has. Click one to put it on the panel.</p>
-      <div class="thumbs" id="thumbs"></div>
-    </section>
-
-    <section class="card">
+<section class="card">
       <h2>Health</h2>
       <table id="health"></table>
       <h2 style="margin-top:16px">Recent activity</h2>
@@ -196,7 +188,7 @@ let K = qs.get('k'); try { if (K) localStorage.setItem('quadk', K); else K = loc
 const base = location.pathname.replace(/\/?(index\.html)?$/, '');
 const api = (p) => `${base}${p}${p.includes('?') ? '&' : '?'}k=${encodeURIComponent(K || '')}`;
 let S = null, lastV = -1, dirty = false;
-const PAGE_NAMES = {quad:'Quad', weather:'Weather', news:'News', sports:'Sports', sky:'Sky'};
+const PAGE_NAMES = {quad:'Quad', weather:'Weather', news:'News', sports:'Sports', lunch:'Lunch'};
 
 async function act(body) {
   const r = await fetch(api('/api/action'), {method:'POST', body: JSON.stringify(body)});
@@ -253,17 +245,9 @@ async function save() {
   const r = await fetch(api('/api/config'), {method:'POST', body: JSON.stringify(collect())});
   const j = await r.json();
   document.getElementById('saved').textContent = j.error ? 'Error: ' + j.error : 'Saved ' + new Date().toLocaleTimeString();
-  if (!j.error) { dirty = false; S.cfg = j.cfg; setTimeout(poll, 400); loadThumbs(); }
+  if (!j.error) { dirty = false; S.cfg = j.cfg; setTimeout(poll, 400); }
 }
 document.getElementById('form').addEventListener('input', () => { dirty = true; document.getElementById('saved').textContent = 'Unsaved changes'; });
-
-function loadThumbs() {
-  const t = document.getElementById('thumbs'); t.innerHTML = '';
-  for (const p of ['weather','news','sports','sky']) {
-    const img = new Image(); img.src = api(`/api/preview.png?page=${p}&t=${Date.now()}`); img.alt = p; img.title = 'Show ' + p + ' on the board';
-    img.onclick = () => act({action:'page', page:p}); t.appendChild(img);
-  }
-}
 
 function render() {
   const d = S.device;
@@ -306,7 +290,6 @@ async function poll() {
     const first = !S;
     S = await r.json();
     if (first || !dirty) fillForm(S.cfg);
-    if (first) loadThumbs();
     if (S.version !== lastV) { lastV = S.version; document.getElementById('screen').src = api(`/api/screen.png?v=${S.version}`); }
     render();
   } catch (e) { document.getElementById('hdr').textContent = 'offline'; }

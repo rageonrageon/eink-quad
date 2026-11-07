@@ -1119,7 +1119,38 @@ def detail_sky(ctx, size):
     return c
 
 
-DETAILS = {"weather": detail_weather, "news": detail_news, "sports": detail_sports, "sky": detail_sky}
+def detail_lunch(ctx, size):
+    c, d = canvas(size)
+    w, h = size
+    rows = ctx.lunch[:5]
+    if not rows:
+        text(d, (w / 2, h / 2 - 14), "No lunch menu loaded", F("sb", 26), anchor="mm")
+        text(d, (w / 2, h / 2 + 18), "Add next month to lunch.json", F("m", 18), anchor="mm")
+        return c
+    rh = (h - 4) / 5
+    for i, r in enumerate(rows):
+        y = 2 + i * rh
+        lab = r.label if r.label in ("TODAY", "TOMORROW") else r.label[:3]
+        pill(d, 14, y + 10, lab, F("cb", 20), pad=7, h=26)
+        text(d, (14, y + 48), f"{r.date:%a} {r.date:%b} {r.date.day}", F("cm", 18))
+        x = 170
+        if r.closed:
+            text(d, (x, y + rh / 2), r.closed, F("sb", 28), anchor="lm")
+        else:
+            fm = fit_font(d, r.items[0], "sb", w - x - 14, [28, 26, 24, 22])
+            text(d, (x, y + 8), ellipsize(d, r.items[0], fm, w - x - 14), fm)
+            ty = y + 8 + fm.size + 6
+            for alt in r.items[1:2]:
+                fa = fit_font(d, "or " + alt, "m", w - x - 14, [20, 18, 16])
+                text(d, (x, ty), ellipsize(d, "or " + alt, fa, w - x - 14), fa)
+            if r.source:
+                text(d, (x, y + rh - 14), "from " + r.source, F("csb", 17), anchor="ls")
+        if i < len(rows) - 1:
+            dotted(d, 10, w - 10, int(y + rh - 2), 3)
+    return c
+
+
+DETAILS = {"weather": detail_weather, "news": detail_news, "sports": detail_sports, "lunch": detail_lunch}
 
 
 def compose_page(ctx: Ctx, name: str) -> Image.Image:
@@ -1127,7 +1158,7 @@ def compose_page(ctx: Ctx, name: str) -> Image.Image:
     c.paste(header(ctx), (0, 0))
     # the strip becomes a page title bar with position dots
     s, d = canvas((W, STRIP_H))
-    titles = {"weather": "Weather", "news": "News & markets", "sports": "Scores & schedule", "sky": "Sky above"}
+    titles = {"weather": "Weather", "news": "News & markets", "sports": "Scores & schedule", "lunch": "School lunch"}
     text(d, (14, STRIP_H / 2 - 1), titles.get(name, name).upper(), F("cb", 19), anchor="lm")
     text(d, (W - 14, STRIP_H / 2 - 1), "middle: back  ·  right: next  ·  left: home", F("cm", 15), anchor="rm")
     d.line((0, STRIP_H - 1, W, STRIP_H - 1), fill=INK, width=2)
