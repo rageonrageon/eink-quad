@@ -345,6 +345,7 @@ class Ctx:
     page: str = "quad"
     notes_new: int = 0
     stale: dict = field(default_factory=dict)
+    lunch: list = field(default_factory=list)    # lunch.LunchDay rows
 
 
 def _deg(v):
@@ -793,7 +794,44 @@ def _event_card(c, d, ctx, size):
     return c
 
 
-PANELS = {"weather": panel_weather, "news": panel_news, "sports": panel_sports, "sky": panel_sky}
+def panel_lunch(ctx: Ctx, size):
+    c, d = canvas(size)
+    w, h = size
+    rows = ctx.lunch[:2]
+    if not rows:
+        text(d, (w / 2, h / 2 - 12), "No lunch menu loaded", F("sb", 20), anchor="mm")
+        text(d, (w / 2, h / 2 + 14), "Add next month to lunch.json", F("m", 15), anchor="mm")
+        return c
+    rh = (h - 6) / 2
+    for i, r in enumerate(rows):
+        y = 3 + i * rh
+        x = pill(d, 12, y + 4, r.label, F("cb", 17), pad=6, h=22) + 8
+        dtxt = f"{r.date:%b} {r.date.day}"
+        if r.label in ("TODAY", "TOMORROW"):
+            dtxt = f"{r.date:%a} " + dtxt
+        text(d, (x, y + 15), dtxt, F("cm", 17), anchor="lm")
+        if r.source:
+            text(d, (w - 12, y + 15), ellipsize(d, "from " + r.source, F("csb", 17), w - x - 90),
+                 F("csb", 17), anchor="rm")
+        ty = y + 32
+        if r.closed:
+            text(d, (12, ty + 4), r.closed, F("sb", 24))
+        else:
+            fm = F("sb", 21)
+            lines = wrap(d, r.items[0], fm, w - 24, 2)
+            for ln in lines:
+                text(d, (12, ty), ln, fm)
+                ty += 23
+            for alt in r.items[1:2]:
+                fa = fit_font(d, "or " + alt, "m", w - 24, [17, 16, 15])
+                text(d, (12, ty + 1), ellipsize(d, "or " + alt, fa, w - 24), fa)
+        if i == 0 and len(rows) > 1:
+            dotted(d, 10, w - 10, int(y + rh - 2), 3)
+    return c
+
+
+PANELS = {"weather": panel_weather, "news": panel_news, "sports": panel_sports, "sky": panel_sky,
+          "lunch": panel_lunch}
 
 
 # ================================================================== chrome

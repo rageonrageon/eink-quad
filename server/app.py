@@ -31,6 +31,7 @@ if hasattr(time, "tzset"):
 from PIL import Image, ImageChops  # noqa: E402
 
 import logos  # noqa: E402
+import lunch  # noqa: E402
 import render as R  # noqa: E402
 import skyevents  # noqa: E402
 import sources as S  # noqa: E402
@@ -53,7 +54,7 @@ DEFAULTS = {
     "city": "Tampa",             # named in the Claude brief's prompt
     "lat": 27.9506, "lon": -82.4572,
     "units": "F",
-    "slots": ["weather", "news", "sports", "sky"],
+    "slots": ["weather", "news", "sports", "lunch"],
     "interval_min": 10,          # the main cadence: every panel refreshes on this beat
     "sky_min": 10,               # plane panel can run faster (partial refresh, no flash)
     "live_fast": True,           # while a team is playing, sports refreshes every live_min
@@ -251,6 +252,8 @@ class Board:
             self.snap["day_count"] = sky.day_stats().count
             self.snap["event"] = events.next_event()
             self.snap["upcoming"] = events.upcoming()
+        elif name == "lunch":
+            self.snap["lunch"] = lunch.upcoming(time.time())
         elif name == "brief":
             try:
                 h = time.localtime().tm_hour
@@ -272,7 +275,7 @@ class Board:
         return R.Ctx(now=now, cfg=cfg, weather=sn.get("weather"), heads=sn.get("heads") or [],
                      quotes=sn.get("quotes") or [], teams=sn.get("teams") or [], featured=sn.get("featured"),
                      recent=sn.get("recent") or [], day_count=sn.get("day_count", 0), nearby=sn.get("nearby") or [],
-                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], brief=sn.get("brief", ""),
+                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], brief=sn.get("brief", ""),
                      sticky=sticky, indoor_f=t_f, indoor_rh=dv.get("rh"), battery=batt,
                      on_usb=dv.get("mode") == "live", cycle=self.cycle, updated=self.updated or now,
                      page=page or self.page)
@@ -353,7 +356,7 @@ class Board:
         beat = int(now // iv)
         due = []
         if self.beats.get("main") != beat:
-            due = ["weather", "news", "sports", "sky", "brief"]
+            due = ["weather", "news", "sports", "sky", "lunch", "brief"]
             self.beats["main"] = beat
             with self.cond:
                 self.cycle += 1
@@ -444,7 +447,7 @@ class Board:
                     return self.redraw("home", major=True)
                 self.note_event("manual refresh")
         if b == 0:
-            for name in ("weather", "news", "sports", "sky"):
+            for name in ("weather", "news", "sports", "sky", "lunch"):
                 try:
                     self.take(name, force=True)
                 except Exception:
@@ -622,8 +625,8 @@ class H(BaseHTTPRequestHandler):
             else:
                 v = str(v)
             new[k] = v
-        if sorted(new["slots"]) != sorted(R.PANELS):
-            raise ValueError("slots must use each panel exactly once")
+        if len(set(new["slots"])) != 4 or not set(new["slots"]) <= set(R.PANELS):
+            raise ValueError("slots must be four different panels")
         moved = (new["lat"], new["lon"], new["radar_nm"], new["iss"], new["launch"]) != \
                 (cfg["lat"], cfg["lon"], cfg["radar_nm"], cfg["iss"], cfg["launch"])
         cfg.clear()
@@ -633,7 +636,7 @@ class H(BaseHTTPRequestHandler):
         if moved:
             start_sky()
         # data-shaping changes need a refetch; purely visual ones just a redraw
-        for name in ("weather", "news", "sports", "sky"):
+        for name in ("weather", "news", "sports", "sky", "lunch"):
             try:
                 board.take(name, force=name in ("weather",) and moved)
             except Exception:
@@ -733,7 +736,7 @@ class Server(ThreadingHTTPServer):
 
 
 def warm():
-    for name in ("weather", "news", "sports", "sky"):
+    for name in ("weather", "news", "sports", "sky", "lunch"):
         try:
             board.take(name)
         except Exception:

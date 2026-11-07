@@ -1,0 +1,22 @@
+{
+  "2026-11-02": ["Corn Dog", "Sunbutter & Jelly Sandwich w/ Cheese Stick"],
+  "2026-11-03": ["Herb Chicken with Bow Tie Pasta and a Ciabatta Roll", "Italian Hoagie"],
+  "2026-11-04": ["Crispy Beef Tacos with Lettuce & Cheese", "Chicken Salad on 9 Grain Bread"],
+  "2026-11-05": ["Pancakes with a Chicken Sausage Patty", "Asian Chicken Wrap"],
+  "2026-11-06": ["Breaded Mozzarella Cheese Sticks with Pizza Sauce", "Turkey & Cheese Hoagie"],
+  "2026-11-09": ["Meatball Sub with Mozzarella Cheese", "Sunbutter & Jelly Sandwich w/ Cheese Stick"],
+  "2026-11-10": ["Crispy Chicken Sandwich", "Ham & Cheese Hoagie"],
+  "2026-11-11": {"items": ["Hamburger Pizza"], "from": "Godfather's"},
+  "2026-11-12": ["Roasted Turkey with Gravy & a Ciabatta Roll"],
+  "2026-11-13": ["Popcorn Chicken with Orange Sauce & Rice", "Turkey & Cheese Hoagie"],
+  "2026-11-16": ["Chicken Fried Steak", "Sunbutter & Jelly Sandwich w/ Cheese Stick"],
+  "2026-11-17": ["Colby Cheese Omelet w/ a Long John Donut", "Italian Hoagie"],
+  "2026-11-18": ["Chicken and Chili Crispito w/ Cheese & Tortilla Chips", "Chicken Salad on 9 Grain Bread"],
+  "2026-11-19": ["Cheeseburger", "Chicken Bacon Ranch Wrap"],
+  "2026-11-20": {"items": ["Chick-fil-A Nuggets"], "from": "Chick-fil-A"},
+  "2026-11-23": ["Hot Dog on a Bun", "Sunbutter & Jelly Sandwich w/ Cheese Stick"],
+  "2026-11-24": ["Grilled Cheese Sandwich", "Ham & Cheese Hoagie"],
+  "2026-11-25": {"closed": "No School"},
+  "2026-11-26": {"closed": "Happy Thanksgiving"},
+  "2026-11-27": {"closed": "No School"}
+}
