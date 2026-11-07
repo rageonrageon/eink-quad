@@ -79,7 +79,24 @@ td:first-child{font-weight:600;white-space:nowrap}
       <p class="note">Shows in the bar under the date, and the LED blinks until someone presses a button.</p>
     </section>
 
-<section class="card">
+    <section class="card">
+      <h2>Calendar</h2>
+      <div id="agendaList"></div>
+      <div class="row" style="margin-top:10px">
+        <input type="date" id="agDate" style="width:auto">
+        <input type="time" id="agTime" style="width:auto" title="Leave empty for an all-day event">
+        <input id="agTitle" maxlength="80" placeholder="e.g. Volleyball practice" style="flex:1;min-width:150px">
+      </div>
+      <div class="row">
+        <label class="inline"><input type="checkbox" id="agWeekly"> Repeats every week</label>
+        <span style="flex:1"></span>
+        <button type="button" onclick="addEvent()">Add event</button>
+      </div>
+      <p class="note" id="icalStatus"></p>
+      <p class="note">Shows in the Calendar panel, soonest first. A time is optional. Past one-off events drop off on their own.</p>
+    </section>
+
+    <section class="card">
       <h2>Health</h2>
       <table id="health"></table>
       <h2 style="margin-top:16px">Recent activity</h2>
@@ -90,7 +107,14 @@ td:first-child{font-weight:600;white-space:nowrap}
   <form class="stack" id="form" onsubmit="return false">
     <section class="card">
       <h2>Layout</h2>
-      <div class="slots" id="slots"></div>
+      <label>Arrangement
+        <select name="layout" id="layoutSel">
+          <option value="quad">Four panels (2 &times; 2)</option>
+          <option value="five">Five panels (2 on top, 3 across the bottom)</option>
+        </select>
+      </label>
+      <div class="slots" id="slots" style="margin-top:10px"></div>
+      <p class="note">In the five-panel layout the bottom panels are about two-thirds as wide. Sports and lunch are designed for that; weather and news work best in the top row.</p>
       <div class="row" style="margin-top:10px">
         <label class="inline"><input type="checkbox" name="dark"> Dark mode (white on black)</label>
       </div>
@@ -199,8 +223,60 @@ async function act(body) {
 function postSticky() {
   act({action:'sticky', text: document.getElementById('stickyText').value, hours: +document.getElementById('stickyHours').value});
 }
+async function agendaCall(body) {
+  const r = await fetch(api('/api/agenda'), {method: body ? 'POST' : 'GET', body: body ? JSON.stringify(body) : undefined});
+  const j = await r.json(); if (j.error) { alert(j.error); return; }
+  renderAgenda(j.events);
+}
+function renderAgenda(events) {
+  const box = document.getElementById('agendaList'); box.innerHTML = '';
+  if (!events.length) { box.innerHTML = '<p class="note">No events yet.</p>'; return; }
+  for (const e of events) {
+    const row = document.createElement('div'); row.className = 'row'; row.style.margin = '4px 0';
+    const d = new Date(e.date + 'T12:00:00');
+    const when = d.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'}) + (e.time ? ' ' + hm12(e.time) : '');
+    const label = document.createElement('span'); label.style.flex = '1';
+    label.textContent = `${when} · ${e.title}${e.repeat ? ' (weekly)' : ''}`;
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'ghost'; del.textContent = 'Delete';
+    del.onclick = () => { if (confirm('Delete "' + e.title + '"?')) agendaCall({op: 'delete', id: e.id}); };
+    row.append(label, del); box.appendChild(row);
+  }
+}
+function hm12(t) { const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; }
+async function addEvent() {
+  const title = document.getElementById('agTitle');
+  await agendaCall({op: 'add', date: document.getElementById('agDate').value, time: document.getElementById('agTime').value,
+                    title: title.value, repeat: document.getElementById('agWeekly').checked ? 'weekly' : ''});
+  title.value = '';
+}
 function ago(s) { if (s == null) return 'never'; if (s < 90) return s + 's ago'; if (s < 5400) return Math.round(s/60) + 'm ago'; return Math.round(s/3600) + 'h ago'; }
 function hm(t) { return t ? new Date(t*1000).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : '—'; }
+
+function buildSlots(current, layout) {
+  const slots = document.getElementById('slots'); slots.innerHTML = '';
+  const labels = layout === 'five' ? ['Top left','Top right','Bottom left','Bottom middle','Bottom right']
+                                   : ['Top left','Top right','Bottom left','Bottom right'];
+  const used = [];
+  labels.forEach((lab, i) => {
+    const s = document.createElement('select'); s.dataset.slot = i; s.title = lab;
+    for (const p of S.panels) { const o = document.createElement('option'); o.value = p; o.textContent = `${lab}: ${p}`; s.appendChild(o); }
+    // keep each position's panel when switching layouts; a new position gets a panel not used yet
+    let v = current[i];
+    if (!v || used.includes(v)) {
+      const pref = (S.defaults && S.defaults.slots) ? S.defaults.slots[i] : null;
+      v = (pref && !used.includes(pref) && !current.includes(pref)) ? pref
+        : S.panels.find(p => !used.includes(p) && !current.includes(p)) || S.panels.find(p => !used.includes(p));
+    }
+    used.push(v);
+    s.value = v; s.onchange = () => { dirty = true; };
+    slots.appendChild(s);
+  });
+}
+document.addEventListener('change', (e) => {
+  if (e.target.id !== 'layoutSel') return;
+  const cur = [...document.querySelectorAll('#slots select')].map(s => s.value);
+  buildSlots(cur, e.target.value);
+});
 
 function fillForm(cfg) {
   const f = document.getElementById('form');
@@ -210,13 +286,7 @@ function fillForm(cfg) {
     if (el.type === 'checkbox') el.checked = !!v;
     else el.value = Array.isArray(v) ? v.join(', ') : v;
   }
-  const slots = document.getElementById('slots'); slots.innerHTML = '';
-  ['Top left','Top right','Bottom left','Bottom right'].forEach((lab, i) => {
-    const s = document.createElement('select'); s.dataset.slot = i; s.title = lab;
-    for (const p of S.panels) { const o = document.createElement('option'); o.value = p; o.textContent = `${lab}: ${p}`; s.appendChild(o); }
-    s.value = cfg.slots[i]; s.onchange = () => { dirty = true; };
-    slots.appendChild(s);
-  });
+  buildSlots(cfg.slots, cfg.layout);
   const mk = (id, map, chosen, name) => {
     const box = document.getElementById(id); box.innerHTML = '';
     for (const [k, lab] of Object.entries(map)) {
@@ -266,6 +336,10 @@ function render() {
   document.getElementById('chips').innerHTML = chips.map(([c, t]) => `<span class="chip ${c}">${t}</span>`).join('');
   document.getElementById('pages').innerHTML = Object.entries(PAGE_NAMES).map(([k, v]) =>
     `<button type="button" class="ghost ${S.page === k ? 'on' : ''}" onclick="act({action:'page',page:'${k}'})">${v}</button>`).join('');
+  const ic = S.sources.ical || {};
+  document.getElementById('icalStatus').textContent = !ic.configured ? 'Google Calendar: not connected (set QUAD_ICAL_URL on the server).'
+    : ic.error ? 'Google Calendar: sync problem, showing the last good copy. ' + ic.error
+    : ic.age_s == null ? 'Google Calendar: connecting…' : `Google Calendar: ${ic.count} upcoming events, synced ${ago(ic.age_s)}.`;
   document.getElementById('hdr').textContent = `v${S.version} · ${S.cfg.label}`;
   document.getElementById('briefText').textContent = S.sources.brief.text || (S.cfg.llm_brief ? 'No brief yet' : 'Brief is off');
   if (!document.activeElement || document.activeElement.id !== 'stickyText') document.getElementById('stickyText').value = S.sticky || '';
@@ -291,6 +365,7 @@ async function poll() {
     const first = !S;
     S = await r.json();
     if (first || !dirty) fillForm(S.cfg);
+    if (first) { agendaCall(); const t = new Date(); document.getElementById('agDate').value = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
     if (S.version !== lastV) { lastV = S.version; document.getElementById('screen').src = api(`/api/screen.png?v=${S.version}`); }
     render();
   } catch (e) { document.getElementById('hdr').textContent = 'offline'; }

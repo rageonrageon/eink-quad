@@ -31,6 +31,8 @@ if hasattr(time, "tzset"):
 from PIL import Image, ImageChops  # noqa: E402
 
 import logos  # noqa: E402
+import agenda  # noqa: E402
+import ical  # noqa: E402
 import lunch  # noqa: E402
 import render as R  # noqa: E402
 import skyevents  # noqa: E402
@@ -54,7 +56,8 @@ DEFAULTS = {
     "city": "Tampa",             # named in the Claude brief's prompt
     "lat": 27.9506, "lon": -82.4572,
     "units": "F",
-    "slots": ["weather", "news", "sports", "lunch"],
+    "layout": "five",            # quad = 2x2 (4 slots), five = 2 on top + 3 across the bottom (5 slots)
+    "slots": ["weather", "lunch", "sports", "news", "calendar"],
     "interval_min": 10,          # the main cadence: every panel refreshes on this beat
     "sky_min": 10,               # plane panel can run faster (partial refresh, no flash)
     "live_fast": True,           # while a team is playing, sports refreshes every live_min
@@ -110,7 +113,11 @@ def save_json(path, obj):
     os.replace(tmp, path)
 
 
+agenda.PATH = os.environ.get("QUAD_AGENDA") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "agenda.json")
 cfg = {**DEFAULTS, **load_json(CONFIG_PATH, {})}
+# settings saved before the layout existed may carry too few slots: pad from the defaults
+_want = 5 if cfg.get("layout") == "five" else 4
+cfg["slots"] = (list(cfg["slots"]) + [p for p in DEFAULTS["slots"] if p not in cfg["slots"]])[:_want]
 S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
 
 
@@ -253,6 +260,14 @@ class Board:
             self.snap["day_count"] = sky.day_stats().count
             self.snap["event"] = events.next_event()
             self.snap["upcoming"] = events.upcoming()
+        elif name == "calendar":
+            now = time.time()
+            evs = agenda.upcoming(now)
+            try:
+                evs += ical.upcoming(now)
+            except Exception:
+                traceback.print_exc()
+            self.snap["agenda"] = sorted(evs, key=lambda o: (o.date, o.time or "00:00", o.title))
         elif name == "lunch":
             self.snap["lunch"] = lunch.upcoming(time.time(), n=5)
         elif name == "brief":
@@ -276,7 +291,7 @@ class Board:
         return R.Ctx(now=now, cfg=cfg, weather=sn.get("weather"), heads=sn.get("heads") or [],
                      quotes=sn.get("quotes") or [], teams=sn.get("teams") or [], featured=sn.get("featured"),
                      recent=sn.get("recent") or [], day_count=sn.get("day_count", 0), nearby=sn.get("nearby") or [],
-                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], brief=sn.get("brief", ""),
+                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], brief=sn.get("brief", ""),
                      sticky=sticky, indoor_f=t_f, indoor_rh=dv.get("rh"), battery=batt,
                      on_usb=dv.get("mode") == "live", cycle=self.cycle, updated=self.updated or now,
                      page=page or self.page)
@@ -312,8 +327,8 @@ class Board:
         changed = ImageChops.logical_xor(old_body, new_body).getbbox() is not None
         self.render_ms = int((time.time() - t0) * 1000)
         bar_now = R.has_strip(self.ctx())
-        bar_moved = bar_now != getattr(self, "bar_prev", bar_now)
-        self.bar_prev = bar_now
+        bar_moved = (bar_now, cfg.get("layout")) != getattr(self, "bar_prev", (bar_now, cfg.get("layout")))
+        self.bar_prev = (bar_now, cfg.get("layout"))
         full = full or bar_moved or self.force_full or (
             cfg["full_every_min"] and time.time() - self.last_full > cfg["full_every_min"] * 60
             and changed and not quiet_now())
@@ -330,7 +345,7 @@ class Board:
             else:
                 self._commit([(new, 0, True)], why)
         else:
-            regions = R.region_frames(self.final, new, R.has_strip(self.ctx()))
+            regions = R.region_frames(self.final, new, R.has_strip(self.ctx()), cfg.get("layout", "quad"))
             # Many changed regions (a page switch) read better as one sweep than
             # as five sequential ~1s partials.
             if len(regions) > 3 or not regions:
@@ -360,7 +375,7 @@ class Board:
         beat = int(now // iv)
         due = []
         if self.beats.get("main") != beat:
-            due = ["weather", "news", "sports", "sky", "lunch", "brief"]
+            due = ["weather", "news", "sports", "sky", "lunch", "calendar", "brief"]
             self.beats["main"] = beat
             with self.cond:
                 self.cycle += 1
@@ -451,7 +466,7 @@ class Board:
                     return self.redraw("home", major=True)
                 self.note_event("manual refresh")
         if b == 0:
-            for name in ("weather", "news", "sports", "sky", "lunch"):
+            for name in ("weather", "news", "sports", "sky", "lunch", "calendar"):
                 try:
                     self.take(name, force=True)
                 except Exception:
@@ -549,6 +564,8 @@ class H(BaseHTTPRequestHandler):
                 return self.png(img)
             if p == "/api/state":
                 return self.send(200, self.state())
+            if p == "/api/agenda":
+                return self.send(200, {"events": agenda.listing()})
             if p == "/api/teams":
                 return self.send(200, {k: v[0] for k, v in S.TEAMS.items()})
             return self.send(404, {"error": "not found"})
@@ -569,6 +586,15 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, self.set_config(body))
             if p == "/api/action":
                 return self.send(200, self.action(body))
+            if p == "/api/agenda":
+                if body.get("op") == "delete":
+                    agenda.delete(str(body.get("id", "")))
+                else:
+                    agenda.add(body.get("date", ""), body.get("time", ""), body.get("title", ""), body.get("repeat", ""))
+                board.take("calendar")
+                with board.cond:
+                    board.redraw("calendar changed")
+                return self.send(200, {"events": agenda.listing()})
             return self.send(404, {"error": "not found"})
         except Exception as e:
             traceback.print_exc()
@@ -601,6 +627,7 @@ class H(BaseHTTPRequestHandler):
             "sky": {"age_s": round(now - sky.updated_at) if sky and sky.updated_at else None,
                     "error": sky.last_error if sky else None},
             "events": events.status if events else None,
+            "ical": ical.status(),
         }
         st["feeds"] = {k: v[0] for k, v in S.WSJ_FEEDS.items()}
         st["teams"] = {k: v[0] for k, v in S.TEAMS.items()}
@@ -629,8 +656,13 @@ class H(BaseHTTPRequestHandler):
             else:
                 v = str(v)
             new[k] = v
-        if len(set(new["slots"])) != 4 or not set(new["slots"]) <= set(R.PANELS):
-            raise ValueError("slots must be four different panels")
+        if new["layout"] not in ("quad", "five"):
+            raise ValueError("layout must be quad or five")
+        want = 5 if new["layout"] == "five" else 4
+        spare = [p for p in R.PANELS if p not in new["slots"]]
+        new["slots"] = (new["slots"] + spare)[:want]
+        if len(set(new["slots"])) != want or not set(new["slots"]) <= set(R.PANELS):
+            raise ValueError(f"slots must be {want} different panels")
         moved = (new["lat"], new["lon"], new["radar_nm"], new["iss"], new["launch"]) != \
                 (cfg["lat"], cfg["lon"], cfg["radar_nm"], cfg["iss"], cfg["launch"])
         cfg.clear()
@@ -640,7 +672,7 @@ class H(BaseHTTPRequestHandler):
         if moved:
             start_sky()
         # data-shaping changes need a refetch; purely visual ones just a redraw
-        for name in ("weather", "news", "sports", "sky", "lunch"):
+        for name in ("weather", "news", "sports", "sky", "lunch", "calendar"):
             try:
                 board.take(name, force=name in ("weather",) and moved)
             except Exception:
@@ -740,7 +772,7 @@ class Server(ThreadingHTTPServer):
 
 
 def warm():
-    for name in ("weather", "news", "sports", "sky", "lunch"):
+    for name in ("weather", "news", "sports", "sky", "lunch", "calendar"):
         try:
             board.take(name)
         except Exception:

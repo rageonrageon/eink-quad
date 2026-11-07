@@ -404,6 +404,8 @@ class Game:
         return "covered" if m > 0 else ("missed" if m < 0 else "push")
     our_rank: int | None = None
     opp_rank: int | None = None
+    opp_id: str = ""
+    opp_record: str = ""
 
     @property
     def result(self):
@@ -472,7 +474,24 @@ def _parse_event(key, e, record=""):
                 them=score(theirs) if theirs and st.get("state") != "pre" else None,
                 tv=tv, record=record, note=note, time_tbd=(e.get("timeValid") is False), our_rank=rank(ours), opp_rank=rank(theirs) if theirs else None,
                 our_logo=logo(ours), opp_logo=logo(theirs) if ot.get("abbreviation") not in (None, "TBD") else "",
-                event_id=str(e.get("id", "")))
+                event_id=str(e.get("id", "")), opp_id=str(ot.get("id", "")))
+
+
+_opp_rec: dict[tuple, Cached] = {}
+
+
+def opp_record(sport, league, opp_id):
+    """Overall record of the other team, e.g. '6-2'. ESPN's per-team schedule does not
+    carry it, so one cached lookup per opponent (an hour is plenty)."""
+    if not opp_id:
+        return ""
+    c = _opp_rec.setdefault((sport, league, opp_id), Cached(3600))
+
+    def fetch():
+        t = _espn(f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{opp_id}")["team"]
+        return t["record"]["items"][0]["summary"]
+    fetch.__name__ = f"opp_record_{opp_id}"
+    return c.get(fetch) or ""
 
 
 def _fetch_team(key):
@@ -670,6 +689,12 @@ def sports(cfg, force=False):
         row.next = next((g for g in games if g.state == "pre" and g.start > now - 3 * 3600), None)
         if row.live:
             live.append(key)
+        for g in (row.live, row.last if row.fresh_result else None, row.next):
+            if g and not g.opp_record:
+                try:
+                    g.opp_record = opp_record(TEAMS[key][1], TEAMS[key][2], g.opp_id)
+                except Exception as e:
+                    print(f"[opp record] {key}: {e}", flush=True)
         if cfg.get("odds", True):
             try:
                 attach_odds(key, row.live)

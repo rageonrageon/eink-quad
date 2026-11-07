@@ -348,6 +348,7 @@ class Ctx:
     lunch: list = field(default_factory=list)    # lunch.LunchDay rows
     lunch_week: list = field(default_factory=list)   # 5 consecutive days from today
     activities: dict = field(default_factory=dict)   # {date: [("8:00 AM", "Volleyball practice"), ...]}
+    agenda: list = field(default_factory=list)       # agenda.Occurrence rows for the calendar panel
 
 
 def _deg(v):
@@ -615,7 +616,84 @@ def _team_lines(r, cfg=None):
     return None, "No games scheduled", ""
 
 
+def central(ts):
+    """A game's start in US Central (CST/CDT), whatever the server's own TZ is."""
+    import datetime as dt
+    u = dt.datetime.fromtimestamp(ts, dt.timezone.utc).replace(tzinfo=None)
+
+    def nth_sunday(month, n):
+        d = dt.datetime(u.year, month, 1)
+        return d + dt.timedelta(days=(6 - d.weekday()) % 7 + 7 * (n - 1))
+    dst_on = nth_sunday(3, 2) + dt.timedelta(hours=8)     # 2:00 CST, 2nd Sunday of March
+    dst_off = nth_sunday(11, 1) + dt.timedelta(hours=7)   # 2:00 CDT, 1st Sunday of November
+    return u + dt.timedelta(hours=-5 if dst_on <= u < dst_off else -6)
+
+
+def _ct_when(g):
+    """'Sun 3:25 PM CT' (adds the date when the game is more than a week out)."""
+    t = central(g.start)
+    day = t.strftime("%a") + (f" {t:%b} {t.day}" if g.start - time.time() > 6 * 86400 else "")
+    if g.time_tbd:
+        return day + " · time TBD"
+    return f"{day} {t.hour % 12 or 12}:{t.minute:02d} {'AM' if t.hour < 12 else 'PM'} CT"
+
+
+def _sports_narrow(ctx: Ctx, size):
+    """Compact sports block for a third-width cell: logo vs/at logo, records under the
+    logos, then game time (Central), then TV and spread. Two teams per page."""
+    c, d = canvas(size)
+    w, h = size
+    teams = ctx.teams
+    if not teams:
+        text(d, (w / 2, h / 2), "No games in the next few weeks", F("m", 16), anchor="mm")
+        return c
+    per = 2 if h >= 150 else 1
+    pages = [teams[i:i + per] for i in range(0, len(teams), per)]
+    pg = pages[ctx.cycle % len(pages)]
+    bh = (h - 6) / per
+    L = 40 if bh >= 104 else 36
+    cx = w / 2
+    off = min(66, w / 2 - L / 2 - 8)          # logo centres sit this far either side of the middle
+    for i, r in enumerate(pg):
+        y = 3 + i * bh
+        g = r.live or (r.last if r.fresh_result else None) or r.next
+        if g is None:
+            text(d, (cx, y + bh / 2), f"{r.label}: no games scheduled", F("m", 16), anchor="mm")
+        else:
+            for url, abbr, mid in ((r.logo, g.abbr, cx - off), (g.opp_logo, g.opp, cx + off)):
+                if not paste_logo(c, url, mid - L / 2, y + 2, L, ctx.cfg):
+                    text(d, (mid, y + 2 + L / 2), abbr, F("cb", 24), anchor="mm")
+            text(d, (cx, y + 2 + L / 2), "vs" if g.home else "at", F("sb", 20), anchor="mm")
+            ry = y + L + 3
+            if r.record:
+                text(d, (cx - off, ry), r.record, F("cm", 14), anchor="ma")
+            if g.opp_record:
+                text(d, (cx + off, ry), g.opp_record, F("cm", 14), anchor="ma")
+            ly = ry + 17
+            odds = _odds_bits(g, g.abbr, ctx.cfg, _sport(r))[:1]
+            tvline = " · ".join(([g.tv] if g.tv else []) + odds)
+            if r.live:
+                l3 = f"LIVE {g.us}–{g.them} · {g.detail}"
+            elif g is r.last:
+                l3 = f"{g.result} {g.us}–{g.them} · Final"
+                tvline = ("Next " + _ct_when(r.next)) if r.next else (g.note or "")
+            else:
+                l3 = _ct_when(g)
+            f3 = fit_font(d, l3, "sb", w - 12, [17, 16, 15, 14])
+            text(d, (cx, ly), ellipsize(d, l3, f3, w - 12), f3, anchor="ma")
+            if tvline:
+                f4 = fit_font(d, tvline, "m", w - 12, [16, 15, 14])
+                text(d, (cx, ly + 21), ellipsize(d, tvline, f4, w - 12), f4, anchor="ma")
+        if i < len(pg) - 1:
+            dotted(d, 10, w - 10, int(y + bh - 2), 3)
+    if len(pages) > 1:
+        text(d, (w - 6, h - 3), f"{ctx.cycle % len(pages) + 1}/{len(pages)}", F("cm", 13), anchor="rd")
+    return c
+
+
 def panel_sports(ctx: Ctx, size, rows=None):
+    if size[0] < 320:
+        return _sports_narrow(ctx, size)
     c, d = canvas(size)
     w, h = size
     teams = ctx.teams
@@ -832,6 +910,43 @@ def panel_lunch(ctx: Ctx, size):
     return c
 
 
+def panel_calendar(ctx: Ctx, size):
+    """Upcoming family events, soonest first: day and time on one line, title under it."""
+    c, d = canvas(size)
+    w, h = size
+    evs = ctx.agenda
+    if not evs:
+        text(d, (w / 2, h / 2 - 12), "Nothing coming up", F("sb", 19), anchor="mm")
+        text(d, (w / 2, h / 2 + 12), "Add events on the settings page", F("m", 14), anchor="mm")
+        return c
+    today = time.localtime(ctx.now)
+    import datetime as _dt
+    t0 = _dt.date(today.tm_year, today.tm_mon, today.tm_mday)
+    rh = 40
+    rows = max(1, int((h - 6) // rh))
+    shown = evs[:rows]
+    hidden = len(evs) - len(shown)
+    if hidden > 0 and rows > 1:             # keep a line for "+N more"
+        shown = evs[:rows - 1]
+        hidden = len(evs) - len(shown)
+    y = 4
+    for i, e in enumerate(shown):
+        delta = (e.date - t0).days
+        day = "Today" if delta == 0 else "Tomorrow" if delta == 1 else e.date.strftime("%a")
+        if delta > 6:
+            day = f"{e.date:%a %b} {e.date.day}"
+        head = day + (" · " + e.clock if e.clock else "")
+        text(d, (12, y), ellipsize(d, head, F("csb", 16), w - 24), F("csb", 16))
+        ft = fit_font(d, e.title, "sb", w - 24, [18, 17, 16, 15])
+        text(d, (12, y + 17), ellipsize(d, e.title, ft, w - 24), ft)
+        y += rh
+        if i < len(shown) - 1:
+            dotted(d, 10, w - 10, int(y - 3), 3)
+    if hidden > 0 and rows > 1:
+        text(d, (w - 10, h - 4), f"+{hidden} more", F("cm", 14), anchor="rd")
+    return c
+
+
 def panel_lunch_week(ctx: Ctx, size):
     """The whole right half: five consecutive days, one row each."""
     c, d = canvas(size)
@@ -882,7 +997,7 @@ def panel_lunch_week(ctx: Ctx, size):
 
 
 PANELS = {"weather": panel_weather, "news": panel_news, "sports": panel_sports, "sky": panel_sky,
-          "lunch": panel_lunch}
+          "lunch": panel_lunch, "calendar": panel_calendar}
 
 
 # ================================================================== chrome
@@ -979,10 +1094,14 @@ def grid_geom(bar: bool = True):
     return gy, (H - gy) // 2
 
 
-def slot_boxes(bar: bool = True):
+def slot_boxes(bar: bool = True, layout: str = "quad"):
+    """Panel boxes in slot order. quad: 2x2. five: two on top, three across the bottom."""
     gy, ch = grid_geom(bar)
-    return [(0, gy, CELL_W, gy + ch), (CELL_W, gy, W, gy + ch),
-            (0, gy + ch, CELL_W, H), (CELL_W, gy + ch, W, H)]
+    top = [(0, gy, CELL_W, gy + ch), (CELL_W, gy, W, gy + ch)]
+    if layout == "five":
+        xs = [0, W // 3 + 1, 2 * W // 3 + 1, W]
+        return top + [(xs[i], gy + ch, xs[i + 1], H) for i in range(3)]
+    return top + [(0, gy + ch, CELL_W, H), (CELL_W, gy + ch, W, H)]
 
 
 def compose_quad(ctx: Ctx, panels: dict | None = None) -> Image.Image:
@@ -1003,15 +1122,23 @@ def compose_quad(ctx: Ctx, panels: dict | None = None) -> Image.Image:
         d.line((CELL_W - 1, gy + 6, CELL_W - 1, H - 6), fill=INK, width=2)
         d.line((6, gy + ch, CELL_W - 6, gy + ch), fill=INK, width=2)
         return c
+    layout = ctx.cfg.get("layout")
     slots = ctx.cfg.get("slots", ["weather", "news", "sports", "sky"])
-    for name, box in zip(slots, slot_boxes(bar)):
+    boxes = slot_boxes(bar, layout)
+    for name, box in zip(slots, boxes):
         img = (panels or {}).get(name)
         if img is None:
-            img = PANELS[name](ctx, (CELL_W, ch))
+            img = PANELS[name](ctx, (box[2] - box[0], box[3] - box[1]))
         c.paste(img, box[:2])
     d = ImageDraw.Draw(c)
-    d.line((CELL_W - 1, gy + 6, CELL_W - 1, H - 6), fill=INK, width=2)
     d.line((6, gy + ch, W - 6, gy + ch), fill=INK, width=2)
+    if layout == "five":
+        d.line((CELL_W - 1, gy + 6, CELL_W - 1, gy + ch - 6), fill=INK, width=2)
+        for b in boxes[3:]:
+            if b[0]:
+                d.line((b[0] - 1, gy + ch + 6, b[0] - 1, H - 6), fill=INK, width=2)
+    else:
+        d.line((CELL_W - 1, gy + 6, CELL_W - 1, H - 6), fill=INK, width=2)
     return c
 
 
@@ -1320,12 +1447,12 @@ def encode_reel(frames) -> bytes:
     return bytes(out)
 
 
-def region_frames(prev: Image.Image, new: Image.Image, bar: bool = True):
+def region_frames(prev: Image.Image, new: Image.Image, bar: bool = True, layout: str = "quad"):
     """Split one update into per-region partial refreshes (header, strip, each
     slot), so a change in two corners refreshes two small windows instead of
     one window spanning the whole screen. Each partial costs ~1s whatever its
     size, but a smaller window ghosts less."""
-    boxes = [(0, 0, W, HEAD_H)] + ([(0, HEAD_H, W, GRID_Y)] if bar else []) + slot_boxes(bar)
+    boxes = [(0, 0, W, HEAD_H)] + ([(0, HEAD_H, W, GRID_Y)] if bar else []) + slot_boxes(bar, layout)
     frames = []
     cur = prev.copy()
     for b in boxes:
