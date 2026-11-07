@@ -65,7 +65,7 @@ DEFAULTS = {
     "max_age_h": 18,
     "news_pages": 4,
     "tickers": ["^GSPC", "^DJI", "^IXIC", "SOXL"],
-    "teams": ["bucs", "lightning", "rays", "gators_fb", "gators_bb"],
+    "teams": ["broncos", "niners"],
     # your own ESPN teams: {"key": ["Label", "sport", "league", "espn team id or abbr"]},
     # e.g. {"bears": ["Bears", "football", "nfl", "chi"]}; then add "bears" to teams
     "custom_teams": {},

@@ -363,6 +363,8 @@ def quotes_status():
 
 # (key, label, sport, league, espn team id)
 TEAMS = {
+    "broncos": ("Broncos", "football", "nfl", "den"),
+    "niners": ("49ers", "football", "nfl", "sf"),
     "bucs": ("Bucs", "football", "nfl", "tb"),
     "lightning": ("Lightning", "hockey", "nhl", "tb"),
     "rays": ("Rays", "baseball", "mlb", "tb"),
