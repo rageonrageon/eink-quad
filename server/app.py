@@ -89,6 +89,8 @@ DEFAULTS = {
     "headline_bar": True,        # the line under the date (messages and severe alerts still show when off)
     "llm_brief": True,
     "llm_brief_min": 60,
+    "llm_provider": "claude",    # claude (the local program) | anthropic (Claude API) | deepseek
+    "deepseek_model": "deepseek-flash",
     "llm_model": "claude-haiku-4-5-20251001",
     "page_timeout_s": 180,       # detail pages fall back to the quad after this
     "notes": True,               # show note-box notes when they arrive (needs QUAD_NOTES_DB)
@@ -662,7 +664,8 @@ class H(BaseHTTPRequestHandler):
             }
         st["sources"] = {
             "weather": S._weather.status(), "alerts": S._alerts.status(), "news": S.news_status(),
-            "quotes": S.quotes_status(), "sports": S.sports_status(), "brief": S.brief_status(),
+            "quotes": S.quotes_status(), "sports": S.sports_status(), "brief": {**S.brief_status(), "provider": cfg.get("llm_provider", "claude"),
+                      "ready": S.llm_ready(cfg.get("llm_provider", "claude"))},
             "sky": {"age_s": round(now - sky.updated_at) if sky and sky.updated_at else None,
                     "error": sky.last_error if sky else None},
             "events": events.status if events else None,
@@ -673,6 +676,7 @@ class H(BaseHTTPRequestHandler):
         }
         st["feeds"] = {k: v[0] for k, v in S.WSJ_FEEDS.items()}
         st["votd_versions"] = S.VOTD_VERSIONS
+        st["llm_providers"] = S.LLM_PROVIDERS
         st["teams"] = {k: v[0] for k, v in S.TEAMS.items()}
         st["panels"] = list(R.PANELS)
         st["notes_available"] = bool(nb is not None and notes_db() is not None)
@@ -708,10 +712,22 @@ class H(BaseHTTPRequestHandler):
             raise ValueError(f"slots must be {want} different panels")
         moved = (new["lat"], new["lon"], new["radar_nm"], new["iss"], new["launch"]) != \
                 (cfg["lat"], cfg["lon"], cfg["radar_nm"], cfg["iss"], cfg["launch"])
+        if new["llm_provider"] not in S.LLM_PROVIDERS:
+            raise ValueError("unknown brief provider")
+        llm_changed = any(new.get(k) != cfg.get(k) for k in ("llm_brief", "llm_provider", "llm_model", "deepseek_model"))
         cfg.clear()
         cfg.update(new)
         S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
         save_json(CONFIG_PATH, {k: v for k, v in cfg.items() if DEFAULTS.get(k) != v})
+        if llm_changed:                  # rewrite the brief now, off to the side: the model can take a few seconds
+            def _rewrite():
+                try:
+                    board.take("brief", force=True)
+                    with board.cond:
+                        board.redraw("brief rewritten")
+                except Exception:
+                    traceback.print_exc()
+            threading.Thread(target=_rewrite, daemon=True).start()
         if moved:
             start_sky()
         # data-shaping changes need a refetch; purely visual ones just a redraw

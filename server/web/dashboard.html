@@ -198,11 +198,14 @@ td:first-child{font-weight:600;white-space:nowrap}
       <label style="margin-top:10px">Tickers (Yahoo symbols, comma separated)<input name="tickers" placeholder="^GSPC, ^DJI, ^IXIC, SOXL"></label>
       <p class="note">^GSPC = S&amp;P 500, ^DJI = Dow, ^IXIC = Nasdaq, ^RUT = Russell 2000, ^VIX, BTC-USD. Four or five fit best.</p>
       <label class="inline" style="margin-top:12px"><input type="checkbox" name="headline_bar"> Show the headline bar under the date (off: panels use the space; posted messages and severe weather alerts still appear)</label>
-      <label class="inline"><input type="checkbox" name="llm_brief"> Claude writes a one-line daily brief (top bar)</label>
+      <label class="inline"><input type="checkbox" name="llm_brief"> An AI writes a one-line daily brief (top bar; needs the headline bar on)</label>
       <div class="grid2" style="margin-top:8px">
+        <label>Written by<select name="llm_provider" id="llmSel"></select></label>
         <label>Rewrite every (min)<input type="number" name="llm_brief_min" min="15" max="720"></label>
-        <label>Model<input name="llm_model"></label>
+        <label>DeepSeek model<input name="deepseek_model"></label>
+        <label>Claude model<input name="llm_model"></label>
       </div>
+      <p class="note" id="briefStatus"></p>
       <div class="brief" id="briefText"></div>
       <button type="button" class="ghost" onclick="act({action:'brief'})">Regenerate brief now</button>
     </section>
@@ -352,6 +355,8 @@ function fillForm(cfg) {
   const f = document.getElementById('form');
   const vs = document.getElementById('votdSel');
   if (!vs.options.length) for (const [k, lab] of Object.entries(S.votd_versions || {})) vs.add(new Option(lab, k));
+  const ls = document.getElementById('llmSel');
+  if (!ls.options.length) for (const [k, lab] of Object.entries(S.llm_providers || {})) ls.add(new Option(lab, k));
   for (const el of f.elements) {
     if (!el.name || !(el.name in cfg)) continue;
     const v = cfg[el.name];
@@ -429,6 +434,11 @@ function render() {
     : vb.age_s == null ? 'Volleyball feed: connecting…' : `Volleyball feed${vb.name ? ' (' + vb.name + ')' : ''}: ${vb.count} upcoming events, synced ${ago(vb.age_s)}.`;
   document.getElementById('hdr').textContent = `v${S.version} · ${S.cfg.label}`;
   document.getElementById('briefText').textContent = S.sources.brief.text || (S.cfg.llm_brief ? 'No brief yet' : 'Brief is off');
+  const bs = S.sources.brief || {};
+  document.getElementById('briefStatus').textContent = !S.cfg.llm_brief ? ''
+    : !bs.ready ? `Brief: ${(S.llm_providers || {})[bs.provider] || bs.provider} is not available on this server (key not set, or program not installed).`
+    : bs.error ? 'Brief: last attempt failed. ' + bs.error
+    : bs.age_s == null ? 'Brief: waiting for the first one (written between 6 AM and 11 PM, or press "Regenerate").' : `Brief: written ${ago(bs.age_s)}.`;
   if (!document.activeElement || document.activeElement.id !== 'stickyText') document.getElementById('stickyText').value = S.sticky || '';
   document.getElementById('notesNote').textContent = S.notes_available ? 'Connected to the note box inbox. Left button hearts a note, any other button dismisses it.' : 'Note box inbox not found on this server.';
   const rows = [];

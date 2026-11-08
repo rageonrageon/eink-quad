@@ -821,6 +821,90 @@ def votd_status(version=None):
 _brief = Cached(3600)
 
 
+LLM_PROVIDERS = {"claude": "Claude program on the server (local installs only)",
+                 "anthropic": "Claude API (needs ANTHROPIC_API_KEY)",
+                 "deepseek": "DeepSeek API (needs DEEPSEEK_API_KEY)"}
+
+
+def _tidy(s: str, last: bool = False) -> str:
+    """One plain line from whatever the model returned: no markdown, quotes or preamble."""
+    lines = [ln.strip() for ln in (s or "").strip().splitlines() if ln.strip()]
+    if not lines:
+        raise RuntimeError("the model returned nothing")
+    line = lines[-1] if last else lines[0]
+    return re.sub(r"[*_`#]+", "", line).strip().strip('"“”').strip()[:140]
+
+
+def _ask_claude_cli(prompt, cfg):
+    """The original route: the `claude` command-line program, which has to be installed and
+    logged in on the machine running this server (so not on Railway)."""
+    out = subprocess.run(
+        ["claude", "-p", prompt, "--strict-mcp-config", "--model", cfg.get("llm_model", "claude-haiku-4-5-20251001")],
+        capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL, env=dict(os.environ),
+        cwd=os.path.join(HERE, "cache"))
+    if out.returncode or not (out.stdout or "").strip():
+        raise RuntimeError((out.stderr or out.stdout or "no output")[:150])
+    return _tidy(out.stdout, last=True)
+
+
+def _ask_anthropic(prompt, cfg):
+    """Claude through the API, with a key kept in the ANTHROPIC_API_KEY environment variable."""
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set on the server")
+    r = requests.post("https://api.anthropic.com/v1/messages", timeout=60,
+                      headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                      json={"model": cfg.get("llm_model") or "claude-haiku-4-5-20251001", "max_tokens": 120,
+                            "messages": [{"role": "user", "content": prompt}]})
+    if not r.ok:
+        raise RuntimeError(f"Anthropic HTTP {r.status_code}: {r.text[:120]}")
+    return _tidy("".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text"))
+
+
+def _ask_deepseek(prompt, cfg):
+    """DeepSeek's chat API, with a key kept in the DEEPSEEK_API_KEY environment variable. If the
+    configured model name is rejected (names change), it asks DeepSeek which models exist and
+    retries once with a flash or chat model."""
+    key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("DEEPSEEK_API_KEY is not set on the server")
+    hdr = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+    def call(model):
+        return requests.post("https://api.deepseek.com/chat/completions", headers=hdr, timeout=60,
+                             json={"model": model, "messages": [{"role": "user", "content": prompt}],
+                                   "max_tokens": 100, "temperature": 0.4, "stream": False})
+    model = cfg.get("deepseek_model") or "deepseek-flash"
+    r = call(model)
+    if r.status_code in (400, 404, 422):
+        m = requests.get("https://api.deepseek.com/models", headers=hdr, timeout=20)
+        ids = [x.get("id", "") for x in (m.json().get("data", []) if m.ok else [])]
+        alt = next((i for i in ids if "flash" in i), None) or next((i for i in ids if "chat" in i), None)
+        if alt and alt != model:
+            r = call(alt)
+    if not r.ok:
+        raise RuntimeError(f"DeepSeek HTTP {r.status_code}: {r.text[:120]}")
+    return _tidy(r.json()["choices"][0]["message"]["content"])
+
+
+def _ask_llm(prompt, cfg):
+    provider = cfg.get("llm_provider", "claude")
+    fn = {"claude": _ask_claude_cli, "anthropic": _ask_anthropic, "deepseek": _ask_deepseek}.get(provider)
+    if fn is None:
+        raise RuntimeError(f"unknown brief provider {provider!r}")
+    return fn(prompt, cfg)
+
+
+def llm_ready(provider):
+    """Can this provider run at all (is its key set, or the program installed)?"""
+    if provider == "deepseek":
+        return bool(os.environ.get("DEEPSEEK_API_KEY", "").strip())
+    if provider == "anthropic":
+        return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    import shutil
+    return shutil.which("claude") is not None
+
+
 def brief(cfg, heads, wx, games, force=False) -> str:
     """One line from Claude tying the day together. Optional; empty on failure."""
     if not cfg.get("llm_brief"):
@@ -854,16 +938,7 @@ def brief(cfg, heads, wx, games, force=False) -> str:
             "severe weather beats everything; then a local team playing today/tonight; otherwise the most "
             "consequential news story. Don't restate routine weather unless rain or heat is notable.\n\n"
             f"{w}\nSports: {g}\nHeadlines:\n" + "\n".join(lines))
-        env = dict(os.environ)
-        out = subprocess.run(
-            ["claude", "-p", prompt, "--strict-mcp-config", "--model", cfg.get("llm_model", "claude-haiku-4-5-20251001")],
-            capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL, env=env,
-            cwd=os.path.join(HERE, "cache"))
-        txt = (out.stdout or "").strip().splitlines()
-        if out.returncode or not txt:
-            raise RuntimeError((out.stderr or out.stdout or "no output")[:150])
-        s = txt[-1].strip().strip('"')
-        return s[:140]
+        return _ask_llm(prompt, cfg)
 
     return _brief.get(llm_brief, force) or ""
 
