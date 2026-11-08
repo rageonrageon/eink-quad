@@ -659,6 +659,7 @@ class H(BaseHTTPRequestHandler):
             "events": events.status if events else None,
             "ical": ical.status(),
             "ical_volleyball": ical.VOLLEYBALL.status(),
+            "verse": S.votd_status(cfg.get("votd_version", "NIV")),
         }
         st["feeds"] = {k: v[0] for k, v in S.WSJ_FEEDS.items()}
         st["votd_versions"] = S.VOTD_VERSIONS

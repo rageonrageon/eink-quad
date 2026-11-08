@@ -175,6 +175,7 @@ td:first-child{font-weight:600;white-space:nowrap}
       <h2>Verse of the day</h2>
       <label>Translation<select name="votd_version" id="votdSel"></select></label>
       <p class="note">Daily verse from Bible Gateway, for the Verse tile. Pick the tile in Layout.</p>
+      <p class="note" id="votdStatus"></p>
     </section>
 
     <section class="card">
@@ -401,6 +402,10 @@ function render() {
   document.getElementById('icalStatus').textContent = !ic.configured ? 'Google Calendar: not connected (set QUAD_ICAL_URL on the server).'
     : ic.error ? 'Google Calendar: sync problem, showing the last good copy. ' + ic.error
     : ic.age_s == null ? 'Google Calendar: connecting…' : `Google Calendar: ${ic.count} upcoming events, synced ${ago(ic.age_s)}.`;
+  const vs_ = S.sources.verse || {};
+  document.getElementById('votdStatus').textContent = vs_.age_s == null ? (vs_.error ? 'Verse: failing. ' + vs_.error : 'Verse: not fetched yet.')
+    : vs_.source === 'Bible Gateway' ? `Verse: Bible Gateway, updated ${ago(vs_.age_s)}.`
+    : `Verse: using a backup (${vs_.source}, ${vs_.version}) because Bible Gateway failed. ${vs_.note || ''}`;
   const vb = S.sources.ical_volleyball || {};
   document.getElementById('vbStatus').textContent = !vb.configured ? 'Volleyball feed: not connected (set QUAD_ICAL_URL_VOLLEYBALL on the server).'
     : vb.error ? 'Volleyball feed: sync problem, showing the last good copy. ' + vb.error

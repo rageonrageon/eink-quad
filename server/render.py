@@ -920,35 +920,34 @@ def panel_calendar(ctx: Ctx, size):
     c, d = canvas(size)
     w, h = size
     evs = ctx.agenda
+    text(d, (12, 3), "CALENDAR", F("cb", 18))              # same header as the other tiles
+    d.line((10, 25, w - 10, 25), fill=INK, width=2)
     if not evs:
-        text(d, (w / 2, h / 2 - 12), "Nothing coming up", F("sb", 19), anchor="mm")
-        text(d, (w / 2, h / 2 + 12), "Add events on the settings page", F("m", 14), anchor="mm")
+        text(d, (w / 2, 30 + (h - 30) / 2 - 8), "Nothing coming up", F("sb", 19), anchor="mm")
+        text(d, (w / 2, 30 + (h - 30) / 2 + 14), "Add events on the settings page", F("m", 14), anchor="mm")
         return c
     today = time.localtime(ctx.now)
     import datetime as _dt
     t0 = _dt.date(today.tm_year, today.tm_mon, today.tm_mday)
-    rh = 46                                  # row pitch: date line, title, then room before the divider
-    avail = h - 6
-    rows = max(1, int(avail // rh))
-    if len(evs) > rows and rows > 1:         # not everything fits: keep a line for "+N more"
-        rows = max(1, int((avail - 16) // rh))
+    rh = 44                                  # row pitch: date line, title, then room before the divider
+    rows = max(1, int((h - 28) // rh))
     shown = evs[:rows]
     hidden = len(evs) - len(shown)
-    y = 3
+    y = 28
     for i, e in enumerate(shown):
         delta = (e.date - t0).days
         date = f"{e.date:%a %b} {e.date.day}"            # always the date: "Mon Nov 9"
         day = ("Today · " if delta == 0 else "Tomorrow · " if delta == 1 else "") + date
         head = day + (" · " + e.clock if e.clock else "")
         fh = fit_font(d, head, "csb", w - 24, [16, 15, 14])
-        text(d, (12, y + 3), ellipsize(d, head, fh, w - 24), fh)
+        text(d, (12, y + 2), ellipsize(d, head, fh, w - 24), fh)
         ft = fit_font(d, e.title, "sb", w - 24, [18, 17, 16, 15])
-        text(d, (12, y + 20), ellipsize(d, e.title, ft, w - 24), ft)
+        text(d, (12, y + 18), ellipsize(d, e.title, ft, w - 24), ft)
         y += rh
         if i < len(shown) - 1:
             dotted(d, 10, w - 10, int(y - 2), 3)
-    if hidden > 0:
-        text(d, (w - 10, h - 4), f"+{hidden} more", F("cm", 14), anchor="rd")
+    if hidden > 0:                           # the count sits in the header, so it costs no row
+        text(d, (w - 12, 5), f"+{hidden} more", F("cm", 15), anchor="ra")
     return c
 
 

@@ -746,28 +746,76 @@ VOTD_VERSIONS = {"NIV": "NIV", "NIRV": "NIrV (easier to read)", "ESV": "ESV", "N
 _votd: dict[str, Cached] = {}
 
 
+def _votd_gateway(version):
+    r = requests.get("https://www.biblegateway.com/votd/get/", params={"format": "json", "version": version},
+                     headers={"User-Agent": UA_BOT}, timeout=10)
+    r.raise_for_status()
+    v = r.json()["votd"]
+    txt = html.unescape(v.get("rawtext") or re.sub(r"<[^>]+>", "", v.get("text", "")))
+    txt = re.sub(r"\s+", " ", txt).strip().strip("\u201c\u201d\"").strip()
+    if not txt:
+        raise ValueError("empty verse")
+    return {"text": txt, "ref": v.get("display_ref") or v.get("reference", ""), "version": v.get("version_id") or version}
+
+
+def _votd_ourmanna(version):
+    """Backup: OurManna's daily verse. NIV only, whatever translation was asked for."""
+    r = requests.get("https://beta.ourmanna.com/api/v1/get", params={"format": "json", "order": "daily"},
+                     headers={"User-Agent": UA_BOT}, timeout=10)
+    r.raise_for_status()
+    v = r.json()["verse"]["details"]
+    txt = re.sub(r"\s+", " ", html.unescape(v["text"])).strip()
+    if not txt:
+        raise ValueError("empty verse")
+    return {"text": txt, "ref": v["reference"], "version": v.get("version") or "NIV"}
+
+
+def _votd_builtin(version):
+    """Last resort, no network: a verse from a built-in list (public-domain KJV), a different
+    one each day."""
+    import datetime as _dt
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "verses_kjv.json"), encoding="utf-8") as f:
+        verses = json.load(f)
+    v = verses[_dt.date.today().timetuple().tm_yday % len(verses)]
+    return {"text": v["text"], "ref": v["ref"], "version": "KJV"}
+
+
 def votd(version="NIV", force=False):
-    """Bible Gateway's verse of the day in the chosen translation:
-    {"text", "ref", "version", "day"}, or None if it has never been fetched. The verse
-    changes once a day; an hour's cache is plenty, and a failed fetch keeps the last one."""
+    """Verse of the day: {"text", "ref", "version", "source", "note"}, or None before the first
+    fetch. Tries Bible Gateway in the chosen translation, then OurManna, then a built-in list,
+    so a verse always shows. "note" says why a backup was used. The verse changes once a day, so
+    a good Bible Gateway result is cached for an hour; a backup is retried after ten minutes."""
     version = version if version in VOTD_VERSIONS else "NIV"
     c = _votd.setdefault(version, Cached(3600))
 
     def fetch():
-        r = requests.get("https://www.biblegateway.com/votd/get/", params={"format": "json", "version": version},
-                         headers={"User-Agent": UA_BOT}, timeout=10)
-        r.raise_for_status()
-        v = r.json()["votd"]
-        txt = html.unescape(v.get("rawtext") or re.sub(r"<[^>]+>", "", v.get("text", "")))
-        txt = re.sub(r"\s+", " ", txt).strip().strip("\u201c\u201d\"").strip()
-        return {"text": txt, "ref": v.get("display_ref") or v.get("reference", ""),
-                "version": v.get("version_id") or version, "day": f'{v.get("year")}-{v.get("month")}-{v.get("day")}'}
+        problems = []
+        for name, fn in (("Bible Gateway", _votd_gateway), ("OurManna", _votd_ourmanna), ("built-in list", _votd_builtin)):
+            try:
+                v = fn(version)
+            except Exception as e:
+                problems.append(f"{name}: {type(e).__name__}: {e}"[:160])
+                continue
+            v["source"] = name
+            v["note"] = "; ".join(problems)
+            v["at"] = time.time()
+            return v
+        raise RuntimeError("; ".join(problems))
     fetch.__name__ = f"votd_{version}"
-    return c.get(fetch, force)
+    v = c.get(fetch, force)
+    c.ttl = 3600 if (v and v.get("source") == "Bible Gateway") else 600
+    return v
 
 
-def votd_status():
-    return {k: c.status() for k, c in _votd.items()}
+def votd_status(version=None):
+    c = _votd.get(version) if version else None
+    if c is None and _votd:
+        c = next(iter(_votd.values()))
+    if c is None:
+        return {"age_s": None, "error": None, "source": "", "note": ""}
+    st = c.status()
+    v = c.value or {}
+    return {**st, "source": v.get("source", ""), "note": v.get("note", ""), "version": v.get("version", "")}
 
 
 _brief = Cached(3600)
