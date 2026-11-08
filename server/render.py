@@ -922,27 +922,27 @@ def panel_calendar(ctx: Ctx, size):
     today = time.localtime(ctx.now)
     import datetime as _dt
     t0 = _dt.date(today.tm_year, today.tm_mon, today.tm_mday)
-    rh = 40
-    rows = max(1, int((h - 6) // rh))
+    rh = 46                                  # row pitch: date line, title, then room before the divider
+    avail = h - 6
+    rows = max(1, int(avail // rh))
+    if len(evs) > rows and rows > 1:         # not everything fits: keep a line for "+N more"
+        rows = max(1, int((avail - 16) // rh))
     shown = evs[:rows]
     hidden = len(evs) - len(shown)
-    if hidden > 0 and rows > 1:             # keep a line for "+N more"
-        shown = evs[:rows - 1]
-        hidden = len(evs) - len(shown)
-    y = 4
+    y = 3
     for i, e in enumerate(shown):
         delta = (e.date - t0).days
-        day = "Today" if delta == 0 else "Tomorrow" if delta == 1 else e.date.strftime("%a")
-        if delta > 6:
-            day = f"{e.date:%a %b} {e.date.day}"
+        date = f"{e.date:%a %b} {e.date.day}"            # always the date: "Mon Nov 9"
+        day = ("Today · " if delta == 0 else "Tomorrow · " if delta == 1 else "") + date
         head = day + (" · " + e.clock if e.clock else "")
-        text(d, (12, y), ellipsize(d, head, F("csb", 16), w - 24), F("csb", 16))
+        fh = fit_font(d, head, "csb", w - 24, [16, 15, 14])
+        text(d, (12, y + 3), ellipsize(d, head, fh, w - 24), fh)
         ft = fit_font(d, e.title, "sb", w - 24, [18, 17, 16, 15])
-        text(d, (12, y + 17), ellipsize(d, e.title, ft, w - 24), ft)
+        text(d, (12, y + 20), ellipsize(d, e.title, ft, w - 24), ft)
         y += rh
         if i < len(shown) - 1:
-            dotted(d, 10, w - 10, int(y - 3), 3)
-    if hidden > 0 and rows > 1:
+            dotted(d, 10, w - 10, int(y - 2), 3)
+    if hidden > 0:
         text(d, (w - 10, h - 4), f"+{hidden} more", F("cm", 14), anchor="rd")
     return c
 
