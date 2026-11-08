@@ -34,6 +34,7 @@ import logos  # noqa: E402
 import agenda  # noqa: E402
 import bibleapi  # noqa: E402
 import countdown  # noqa: E402
+import hearings  # noqa: E402
 import history  # noqa: E402
 import ical  # noqa: E402
 import localtv  # noqa: E402
@@ -128,6 +129,7 @@ def save_json(path, obj):
 
 countdown.PATH = os.environ.get("QUAD_COUNTDOWNS") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "countdowns.json")
 agenda.PATH = os.environ.get("QUAD_AGENDA") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "agenda.json")
+hearings.PATH = os.environ.get("QUAD_HEARINGS") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "hearings.json")
 localtv.PATH = os.environ.get("QUAD_TVLOCAL") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "tv_local.json")
 cfg = {**DEFAULTS, **load_json(CONFIG_PATH, {})}
 bibleapi.set_allowed(cfg.get("votd_choices"))
@@ -284,6 +286,9 @@ class Board:
             except Exception:
                 traceback.print_exc()
             self.snap["agenda"] = sorted(evs, key=lambda o: (o.date, o.time or "00:00", o.title))
+        elif name == "hearings":
+            import datetime as _dt
+            self.snap["hearings"] = hearings.upcoming(_dt.date.today(), 3)
         elif name == "history":
             try:
                 self.snap["history"] = history.pick(time.time(), 2, cfg.get("history_skip_politics", True))
@@ -312,7 +317,7 @@ class Board:
                 h = time.localtime().tm_hour
                 if 6 <= h < 23 or force:
                     self.snap["brief"] = S.brief(cfg, self.snap.get("heads") or [], self.snap.get("weather"),
-                                                 self.snap.get("teams") or [], force)
+                                                 self.snap.get("teams") or [], force, visible=R.visible_panels(cfg))
             except Exception as e:
                 print(f"[brief] {e}", flush=True)
 
@@ -328,7 +333,7 @@ class Board:
         return R.Ctx(now=now, cfg=cfg, weather=sn.get("weather"), heads=sn.get("heads") or [],
                      quotes=sn.get("quotes") or [], teams=sn.get("teams") or [], featured=sn.get("featured"),
                      recent=sn.get("recent") or [], day_count=sn.get("day_count", 0), nearby=sn.get("nearby") or [],
-                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], countdowns=sn.get("countdowns") or [], verse=sn.get("verse"), history=sn.get("history") or [], volleyball=sn.get("volleyball") or [],
+                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], countdowns=sn.get("countdowns") or [], verse=sn.get("verse"), history=sn.get("history") or [], hearings=sn.get("hearings") or [], volleyball=sn.get("volleyball") or [],
                      volleyball_name=sn.get("volleyball_name", ""), volleyball_on=bool(ical.VOLLEYBALL.url()), brief=sn.get("brief", ""),
                      sticky=sticky, indoor_f=t_f, indoor_rh=dv.get("rh"), battery=batt,
                      on_usb=dv.get("mode") == "live", cycle=self.cycle, updated=self.updated or now,
@@ -414,7 +419,7 @@ class Board:
         beat = int(now // iv)
         due = []
         if self.beats.get("main") != beat:
-            due = ["weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "brief"]
+            due = ["weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "brief"]
             self.beats["main"] = beat
             with self.cond:
                 self.cycle += 1
@@ -535,7 +540,7 @@ class Board:
                     return self.redraw("home", major=True)
                 self.note_event("manual refresh")
         if b == 0:
-            for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history"):
+            for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings"):
                 try:
                     self.take(name, force=True)
                 except Exception:
@@ -637,6 +642,8 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, {"events": agenda.listing()})
             if p == "/api/countdowns":
                 return self.send(200, countdown.settings())
+            if p == "/api/hearings":
+                return self.send(200, {"days": hearings.load()})
             if p == "/api/teams":
                 return self.send(200, {k: v[0] for k, v in S.TEAMS.items()})
             return self.send(404, {"error": "not found"})
@@ -657,6 +664,12 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, self.set_config(body))
             if p == "/api/action":
                 return self.send(200, self.action(body))
+            if p == "/api/hearings":              # a whole new schedule, sent by tools/import_hearings.py
+                saved = hearings.replace(body.get("days"))
+                board.take("hearings")
+                with board.cond:
+                    board.redraw("hearing calendar updated")
+                return self.send(200, {"days": saved})
             if p == "/api/countdowns":
                 op = body.get("op")
                 if op == "holidays":
@@ -721,6 +734,9 @@ class H(BaseHTTPRequestHandler):
         st["api_bible"] = {"key_set": bool(bibleapi.key()), "bibles": len(bibleapi.cached_bibles())}
         st["llm_providers"] = S.LLM_PROVIDERS
         st["netcheck"] = netcheck.snapshot()
+        import datetime as _dt
+        st["hearings"] = hearings.summary(_dt.date.today())
+        st["brief_skips_sports"] = "sports" in R.visible_panels(cfg)
         st["tv_local"] = {**localtv.summary(), "enabled": bool(cfg.get("tv_check", True)),
                           "busy": bool(getattr(board, "_tv_busy", False))}
         try:
@@ -764,7 +780,7 @@ class H(BaseHTTPRequestHandler):
                 (cfg["lat"], cfg["lon"], cfg["radar_nm"], cfg["iss"], cfg["launch"])
         if new["llm_provider"] not in S.LLM_PROVIDERS:
             raise ValueError("unknown brief provider")
-        llm_changed = any(new.get(k) != cfg.get(k) for k in ("llm_brief", "llm_provider", "llm_model", "deepseek_model"))
+        llm_changed = any(new.get(k) != cfg.get(k) for k in ("llm_brief", "llm_provider", "llm_model", "deepseek_model", "layout", "slots"))
         cfg.clear()
         cfg.update(new)
         bibleapi.set_allowed(cfg.get("votd_choices"))
@@ -782,7 +798,7 @@ class H(BaseHTTPRequestHandler):
         if moved:
             start_sky()
         # data-shaping changes need a refetch; purely visual ones just a redraw
-        for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history"):
+        for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings"):
             try:
                 board.take(name, force=name in ("weather",) and moved)
             except Exception:
@@ -891,7 +907,7 @@ class Server(ThreadingHTTPServer):
 
 def warm():
     netcheck.run_async()          # which sites will this server be allowed to reach? (Health panel)
-    for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history"):
+    for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings"):
         try:
             board.take(name)
         except Exception:

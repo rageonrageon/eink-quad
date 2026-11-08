@@ -8,6 +8,10 @@ __pycache__/
 # runtime state and caches
 server/config.json
 server/state.json
+server/hearings.json
+server/agenda.json
+server/countdowns.json
+server/tv_local.json
 server/cache/
 server/*.png
 OPS.local.md

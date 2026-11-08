@@ -829,7 +829,7 @@ def votd_status(version=None):
 
 
 _brief = Cached(3600)
-_brief_info = {"provider": "", "model": "", "at": 0.0, "ok": None, "detail": ""}     # the latest attempt
+_brief_info = {"provider": "", "model": "", "at": 0.0, "ok": None, "detail": "", "prompt": ""}     # the latest attempt
 
 
 LLM_PROVIDERS = {"claude": "Claude program on the server (local installs only)",
@@ -931,7 +931,7 @@ def _ask_llm(prompt, cfg):
     model = (cfg.get("deepseek_model") or "deepseek-flash") if provider == "deepseek" else \
             (cfg.get("llm_model") or "claude-haiku-4-5-20251001")
     # what we are about to try, shown on the Health panel whether or not it works
-    _brief_info.update(provider=provider, model=model, at=time.time(), ok=None, detail="")
+    _brief_info.update(provider=provider, model=model, at=time.time(), ok=None, detail="", prompt=prompt)
     try:
         out = fn(prompt, cfg)
     except Exception as e:
@@ -951,13 +951,16 @@ def llm_ready(provider):
     return shutil.which("claude") is not None
 
 
-def brief(cfg, heads, wx, games, force=False) -> str:
-    """One line from Claude tying the day together. Optional; empty on failure."""
+def brief(cfg, heads, wx, games, force=False, visible=()) -> str:
+    """One line tying the day together, written by the chosen AI. Optional; empty on failure.
+    `visible` is the set of panels on the main screen: if the sports panel is already there, the
+    brief is told nothing about sports (no point saying it twice at the top)."""
     if not cfg.get("llm_brief"):
         return ""
     _brief.ttl = cfg.get("llm_brief_min", 60) * 60
 
     city = cfg.get("city") or "town"
+    show_sports = "sports" not in set(visible)
 
     def llm_brief():
         lines = [f"- {h.section}: {h.title}" for h in heads[:12]]
@@ -968,7 +971,7 @@ def brief(cfg, heads, wx, games, force=False) -> str:
             if wx.alerts:
                 w += " ALERTS: " + "; ".join(a[0] for a in wx.alerts[:2])
         parts = []
-        for r in games:
+        for r in (games if show_sports else []):
             if r.live:
                 parts.append(f"{r.label} playing now vs {r.live.opp}, {r.live.us}-{r.live.them} {r.live.detail}")
             if r.fresh_result:
@@ -986,20 +989,29 @@ def brief(cfg, heads, wx, games, force=False) -> str:
                     pass
                 parts.append(f"{r.label} play {r.next.opp_name} {day} {time.strftime('%I:%M %p', st)}{ln}{tag}")
         g = "; ".join(parts)
+        if show_sports:
+            lead = ("severe weather beats everything; then the family's teams playing today/tonight; otherwise the most "
+                    "consequential news story. ")
+            team_rules = ("If more than one team plays today, name every one of them, using 'vs' "
+                          "to keep it short (pattern only, use the real names and times from the facts: Team A vs Team B at "
+                          "noon, Team C vs Team D at 3:25). A team simply "
+                          "plays its opponent: never say who is home or away, and never use the word 'host'. "
+                          "A game marked (on FOX in Omaha) or (on CBS in Omaha) can be watched on local TV: put that network "
+                          "in parentheses right after its time, like 3:25 (FOX). Never add a network to a game that is not marked "
+                          "that way, and say nothing else about TV (for example, never write that a game is not on local TV). ")
+            sports_fact = f"Sports: {g}\n"
+        else:               # the sports panel is already on the screen: leave sports out of the brief entirely
+            lead = ("severe weather beats everything; otherwise the most consequential news story. "
+                    "Do not mention sports or any team: sports are already shown elsewhere on the display. ")
+            team_rules = ""
+            sports_fact = ""
         prompt = (
             f"You write the one-line briefing on a small e-paper kitchen display in {city}. "
             f"It is {time.strftime('%A %I:%M %p')}. Using ONLY the facts below, write ONE plain sentence, "
             "max 115 characters, no emoji, no quotes, no preamble. Lead with what matters most today: "
-            "severe weather beats everything; then the family's teams playing today/tonight; otherwise the most "
-            "consequential news story. If more than one team plays today, name every one of them, using 'vs' "
-            "to keep it short (pattern only, use the real names and times from the facts: Team A vs Team B at "
-            "noon, Team C vs Team D at 3:25). A team simply "
-            "plays its opponent: never say who is home or away, and never use the word 'host'. "
-            "A game marked (on FOX in Omaha) or (on CBS in Omaha) can be watched on local TV: put that network "
-            "in parentheses right after its time, like 3:25 (FOX). Never add a network to a game that is not marked "
-            "that way, and say nothing else about TV (for example, never write that a game is not on local TV). "
+            + lead + team_rules +
             "Don't restate routine weather unless rain or heat is notable.\n\n"
-            f"{w}\nSports: {g}\nHeadlines:\n" + "\n".join(lines))
+            f"{w}\n{sports_fact}Headlines:\n" + "\n".join(lines))
         return _ask_llm(prompt, cfg)
 
     return _brief.get(llm_brief, force) or ""

@@ -353,6 +353,7 @@ class Ctx:
     volleyball_name: str = ""                        # the team calendar's own name, e.g. "Power 14 - 2027"
     volleyball_on: bool = False                      # is a volleyball feed configured at all
     countdowns: list = field(default_factory=list)   # countdown.Item rows, soonest first
+    hearings: list = field(default_factory=list)     # hearings.Day rows: the next hearing days
     verse: dict | None = None                        # {"text", "ref", "version"} from sources.votd
     history: list = field(default_factory=list)      # [{"year", "text"}] from history.pick
 
@@ -1103,6 +1104,40 @@ def panel_history(ctx: Ctx, size):
     return c
 
 
+def panel_hearings(ctx: Ctx, size):
+    """Hearing Calendar: the next three hearing days, each with its weekday, date, and a badge that says
+    whether any hearing that day is in person (solid) or all are phone/video (outlined)."""
+    c, d = canvas(size)
+    w, h = size
+    text(d, (12, 3), "HEARING CALENDAR", F("cb", 18))
+    d.line((10, 25, w - 10, 25), fill=INK, width=2)
+    days = ctx.hearings
+    if not days:
+        text(d, (w / 2, 30 + (h - 30) / 2 - 8), "No upcoming hearings", F("sb", 18), anchor="mm")
+        text(d, (w / 2, 30 + (h - 30) / 2 + 14), "Load a schedule to see them", F("m", 14), anchor="mm")
+        return c
+    rh = 58
+    y = 29
+    rows = max(1, min(3, int((h - 29) // rh)))
+    for i, day in enumerate(days[:rows]):
+        text(d, (12, y + 5), day.date.strftime("%a").upper(), F("cb", 30))
+        text(d, (72, y + 11), f"{day.date:%b} {day.date.day}", F("sb", 23))
+        label = "IN PERSON" if day.in_person else "REMOTE"
+        f = F("cb", 16)
+        bw = tw(d, label, f) + 18
+        x0, y0 = w - 12 - bw, y + 16
+        if day.in_person:
+            d.rounded_rectangle((x0, y0, w - 12, y0 + 24), radius=4, fill=INK)
+            d.text((x0 + 9, y0 + 12), label, font=f, fill=PAPER, anchor="lm")
+        else:
+            d.rounded_rectangle((x0, y0, w - 12, y0 + 24), radius=4, outline=INK, width=2)
+            d.text((x0 + 9, y0 + 12), label, font=f, fill=INK, anchor="lm")
+        y += rh
+        if i < rows - 1 and i < len(days) - 1:
+            dotted(d, 10, w - 10, int(y - 3), 3)
+    return c
+
+
 def panel_lunch_week(ctx: Ctx, size):
     """The whole right half: five consecutive days, one row each."""
     c, d = canvas(size)
@@ -1153,7 +1188,7 @@ def panel_lunch_week(ctx: Ctx, size):
 
 
 PANELS = {"weather": panel_weather, "news": panel_news, "sports": panel_sports, "sky": panel_sky,
-          "lunch": panel_lunch, "calendar": panel_calendar,
+          "lunch": panel_lunch, "calendar": panel_calendar, "hearings": panel_hearings,
           "volleyball": panel_volleyball, "countdown": panel_countdown, "verse": panel_verse,
           "history": panel_history}
 
@@ -1269,6 +1304,15 @@ def grid_geom(bar: bool = True):
     """(top of the panel grid, height of one cell). Without the bar the grid grows."""
     gy = GRID_Y if bar else HEAD_H
     return gy, (H - gy) // 2
+
+
+def visible_panels(cfg: dict) -> set:
+    """The panels on the main screen right now: the first 4 or 5 of the slots, or the fixed week layout."""
+    layout = cfg.get("layout")
+    if layout == "week":
+        return {"weather", "sports", "lunch"}
+    n = 5 if layout == "five" else 4
+    return set((cfg.get("slots") or [])[:n])
 
 
 def slot_boxes(bar: bool = True, layout: str = "quad"):
