@@ -66,6 +66,8 @@ DEFAULTS = {
     "sky_min": 10,               # plane panel can run faster (partial refresh, no flash)
     "live_fast": True,           # while a team is playing, sports refreshes every live_min
     "live_min": 3,
+    "sleep_min": 30,             # on battery: how often the sleeping tablet wakes to check in (minutes)
+    "awake_above_v": 4.10,       # stay awake (Wi-Fi on) only above this battery voltage, i.e. while charging
     "full_every_min": 120,       # one flashing full refresh this often, to wipe ghosting
     "quiet": "",                 # "23-6" = no scheduled updates overnight
     "dark": False,
@@ -761,7 +763,9 @@ class H(BaseHTTPRequestHandler):
         wait = min(int(q.get("wait", "0") or 0), 30)
         vbat = float(q["vbat"]) if q.get("vbat") else None
         btn = q.get("btn")
-        mode = "live" if (vbat is None or vbat >= 3.80) else "sleep"
+        # awake (Wi-Fi on, long-polling) only while the battery reads above awake_above_v, which a
+        # charging battery does; otherwise deep sleep, waking every sleep_min minutes
+        mode = "live" if (vbat is None or vbat >= float(cfg.get("awake_above_v", 4.10))) else "sleep"
         dv = board.device
         dv.update(last_seen=time.time(), vbat=vbat, mode=mode, version=v,
                   rssi=int(q["rssi"]) if q.get("rssi") else dv.get("rssi"), polls=dv["polls"] + 1)
@@ -796,7 +800,7 @@ class H(BaseHTTPRequestHandler):
                 body = R.encode_reel([(board.final, 0, q.get("fresh") == "1")])
             headers = {
                 "X-Version": board.version, "X-Mode": mode,
-                "X-Next": 600 if mode == "sleep" else 0,
+                "X-Next": max(5, int(cfg.get("sleep_min", 30))) * 60 if mode == "sleep" else 0,
                 "X-Unread": int(board.unread),
                 "X-Chime": int(board.chime_version == board.version and v != board.version),
                 "X-Clean": 0,     # the server schedules full refreshes itself

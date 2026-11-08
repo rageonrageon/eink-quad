@@ -151,7 +151,10 @@ td:first-child{font-weight:600;white-space:nowrap}
         <label>Quiet hours<input name="quiet" placeholder="23-6"></label>
         <label>Detail page timeout (s)<input type="number" name="page_timeout_s" min="20" max="3600"></label>
         <label>Live game refresh (min)<input type="number" name="live_min" min="1" max="30"></label>
+        <label>Battery sleep wake-up (min)<input type="number" name="sleep_min" min="5" max="240"></label>
+        <label>Stay awake only above (V)<input type="number" name="awake_above_v" min="3.6" max="4.3" step="0.05"></label>
       </div>
+      <p class="note">On battery the tablet sleeps and wakes every <b>wake-up</b> minutes to check for news; a button press wakes it at once. It stays awake (Wi-Fi on, instant updates) only while its battery voltage is above the <b>stay awake</b> value, which happens while charging. Set it to 3.8 to stay awake until the battery is about half empty. Live game refresh only applies while awake.</p>
       <label class="inline" style="margin-top:10px"><input type="checkbox" name="live_fast"> Refresh scores faster while a team is playing</label>
       <label class="inline"><input type="checkbox" name="crisp"> Crisp mode: regular updates use a full refresh (brief flash, solid blacks)</label>
       <label class="inline"><input type="checkbox" name="gray"> Greyscale full refreshes (smooth text, ~6s instead of ~3.5s)</label>
@@ -393,8 +396,12 @@ function render() {
   const d = S.device;
   const chips = [];
   const age = d.age_s;
-  chips.push(age != null && age < 90 ? ['ok', 'Device online'] : ['bad', 'Device offline · last ' + ago(age)]);
-  if (d.in_sync === false && age != null && age < 90) chips.push(['warn', 'Updating…']);
+  const asleep = d.mode === 'sleep';
+  const limit = asleep ? ((S.cfg.sleep_min || 30) * 60 + 180) : 90;       // a sleeping tablet checks in only every sleep_min
+  chips.push(age != null && age < limit
+    ? ['ok', asleep ? `Asleep on battery · last check ${ago(age)}` : 'Device online']
+    : ['bad', 'Device offline · last ' + ago(age)]);
+  if (!asleep && d.in_sync === false && age != null && age < 90) chips.push(['warn', 'Updating…']);
   if (d.t != null) chips.push(['', `Inside ${(d.t*9/5+32).toFixed(0)}°F ${d.rh != null ? d.rh.toFixed(0)+'%' : ''}`]);
   if (d.battery != null) chips.push([d.battery < 20 ? 'bad' : '', `Battery ${d.battery}% (${d.vbat?.toFixed(2)}V)`]);
   if (d.rssi != null) chips.push(['', `Wi-Fi ${d.rssi} dBm`]);
