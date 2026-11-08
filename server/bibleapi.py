@@ -8,6 +8,10 @@ same one all day, and the text comes back in whichever translation the key can u
 What the key can use depends on the account: open-access Bibles (KJV and others) are free on every
 plan; copyrighted ones (NIV, ESV, NLT and so on) are added from the account's dashboard.
 Copyrighted text comes with a copyright notice, which the tile shows in small print.
+
+"Translations to offer" (a setting) names the Bibles to put in the menu. Each name can be the Bible's
+abbreviation (NLT), its short name as people say it (NIV, which finds "New International Version 2011"
+when that is the only Bible whose name has those initials), or its Bible ID from the dashboard.
 """
 from __future__ import annotations
 
@@ -23,9 +27,10 @@ from sources import UA_BOT, Cached
 
 BASE = "https://api.scripture.api.bible/v1"
 REFS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "verse_refs.json")
-POPULAR = ["NIV", "ESV", "NLT", "NKJV", "CSB", "NASB", "KJV", "WEB", "ASV"]     # listed first in the menu
+POPULAR = ["NIV", "ESV", "NLT", "NKJV", "CSB", "NASB", "KJV", "WEB", "ASV"]     # listed first when no list is set
 
 _bibles = Cached(24 * 3600)
+_allowed: list = []
 
 
 def key() -> str:
@@ -34,6 +39,11 @@ def key() -> str:
 
 def _norm(s: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (s or "").upper())
+
+
+def _initials(name: str) -> str:
+    """'New International Version 2011' -> 'NIV' (words only; numbers and little words are skipped)."""
+    return "".join(w[0] for w in re.findall(r"[A-Za-z]+", name or "") if w.lower() not in ("the", "of", "and")).upper()
 
 
 def _get(path: str, params: dict | None = None):
@@ -55,8 +65,8 @@ def bibles(force: bool = False) -> list:
         out, seen = [], set()
         for b in _get("/bibles", {"language": "eng"}).get("data", []):
             abbr = b.get("abbreviation") or b.get("abbreviationLocal") or ""
-            if b.get("id") and abbr and _norm(abbr) not in seen:
-                seen.add(_norm(abbr))
+            if b.get("id") and abbr and b["id"] not in seen:
+                seen.add(b["id"])
                 out.append({"id": b["id"], "abbr": abbr, "name": b.get("nameLocal") or b.get("name") or abbr})
         if not out:
             raise RuntimeError("the key can use no English Bibles (add some in the API.Bible dashboard)")
@@ -70,33 +80,65 @@ def cached_bibles() -> list:
     return _bibles.value or []
 
 
-_allowed: list = []
-
-
 def set_allowed(names) -> None:
-    """The translations to offer (abbreviations, in the order to list them), from the settings page."""
+    """The translations to offer, in the order to list them, from the settings page."""
     global _allowed
     if isinstance(names, str):
         names = names.split(",")
     _allowed = [str(n).strip() for n in (names or []) if str(n).strip()]
 
 
-def usable(bl: list | None = None) -> list:
-    """The key's Bibles limited to the allowed list, in that order. If none of the allowed names match
-    what the key can use (a different abbreviation, say), everything the key can use, so there is always a choice."""
+def _find(name: str, bl: list):
+    """The Bible a name refers to: its abbreviation, its ID, or (only if exactly one Bible fits) the
+    initials of its full name. None if nothing fits."""
+    n = _norm(name)
+    b = next((x for x in bl if _norm(x["abbr"]) == n), None)
+    if b is None:
+        b = next((x for x in bl if x["id"].lower() == name.strip().lower()), None)
+    if b is None:
+        cands = [x for x in bl if _initials(x["name"]) == n]
+        if len(cands) == 1:
+            b = cands[0]
+    return b
+
+
+def resolved(bl: list | None = None) -> list:
+    """[(menu key, Bible)] for the menu: the 'translations to offer' that the key can use, in that order.
+    If none of them match, everything the key can use, popular ones first, so there is always a choice."""
     bl = cached_bibles() if bl is None else bl
-    if _allowed:
-        order = {_norm(a): i for i, a in enumerate(_allowed)}
-        picked = sorted((b for b in bl if _norm(b["abbr"]) in order), key=lambda b: order[_norm(b["abbr"])])
-        if picked:
-            return picked
+    out, seen = [], set()
+    for a in _allowed:
+        b = _find(a, bl)
+        if b and b["id"] not in seen:
+            seen.add(b["id"])
+            out.append((b["abbr"] if a.strip().lower() == b["id"].lower() else a, b))
+    if out:
+        return out
     order = {_norm(a): i for i, a in enumerate(POPULAR)}
-    return sorted(bl, key=lambda b: (order.get(_norm(b["abbr"]), 99), b["abbr"].upper()))
+    return [(b["abbr"], b) for b in sorted(bl, key=lambda b: (order.get(_norm(b["abbr"]), 99), b["abbr"].upper()))]
 
 
 def menu() -> dict:
-    """{abbreviation: label} for the translation menu. Empty without a usable key."""
-    return {b["abbr"]: f'{b["abbr"]} · {b["name"]}'[:60] for b in usable()[:60]}
+    """{menu key: label} for the translation menu. Empty without a usable key."""
+    return {k: f'{k} · {b["name"]}'[:60] for k, b in resolved()[:60]}
+
+
+def diagnose() -> dict:
+    """What the key can use, and which 'translations to offer' names matched nothing (with close matches
+    to try). Makes no request, so it is safe to call from the settings page."""
+    bl = cached_bibles()
+    if not bl:
+        return {}
+    missing = []
+    for a in _allowed:
+        if _find(a, bl):
+            continue
+        n = _norm(a)
+        similar = [f'{b["abbr"]} · {b["name"]} · ID {b["id"]}'[:90] for b in bl
+                   if n in _norm(b["abbr"]) or _norm(b["abbr"]) in n or _initials(b["name"]).startswith(n)]
+        missing.append({"asked": a, "similar": similar[:5]})
+    return {"all": [f'{b["abbr"]} · {b["name"]} · ID {b["id"]}'[:90] for b in sorted(bl, key=lambda b: b["abbr"].upper())],
+            "missing": missing}
 
 
 def _verse_id(day: dt.date) -> str:
@@ -112,13 +154,18 @@ def verse_of_the_day(version: str, today: dt.date | None = None) -> dict:
     bl = bibles()
     if not bl:                              # say what actually went wrong (a refused key, no network...)
         raise RuntimeError(f"could not get the list of Bibles: {_bibles.error or 'no answer yet'}")
+    ok = resolved(bl)
     want = _norm(version)
-    ok = usable(bl)
-    b = next((x for x in ok if _norm(x["abbr"]) == want), None)
+    hit = next(((k, b) for k, b in ok if _norm(k) == want), None)
     substituted = ""
-    if b is None:                           # a saved choice that is no longer on offer: use NIV if offered, else the first
-        b = next((x for x in ok if _norm(x["abbr"]) == "NIV"), ok[0])
-        substituted = f"{version} is not on your list of translations, so {b['abbr']} is shown instead"
+    if hit is None:                         # a saved choice that is no longer on offer: use NIV if offered, else the first
+        hit = next(((k, b) for k, b in ok if _norm(k) == "NIV"), ok[0])
+        if any(_norm(a) == want for a in _allowed) and _find(version, bl) is None:
+            substituted = (f"{version} is on your list but your API.Bible key has no Bible that matches it "
+                           f"(see the list below), so {hit[0]} is shown instead")
+        else:
+            substituted = f"{version} is not on your list of translations, so {hit[0]} is shown instead"
+    label, b = hit
     pid = _verse_id(today or dt.date.today())
     d = _get(f"/bibles/{b['id']}/passages/{pid}",
              {"content-type": "text", "include-notes": "false", "include-titles": "false",
@@ -133,4 +180,4 @@ def verse_of_the_day(version: str, today: dt.date | None = None) -> dict:
     if not text:
         raise RuntimeError("API.Bible returned an empty passage")
     cr = re.sub(r"\s+", " ", html.unescape(d.get("copyright") or "")).strip()
-    return {"text": text, "ref": d.get("reference") or pid, "version": b["abbr"], "copyright": cr, "note_extra": substituted}
+    return {"text": text, "ref": d.get("reference") or pid, "version": label, "copyright": cr, "note_extra": substituted}

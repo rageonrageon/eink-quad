@@ -190,6 +190,8 @@ td:first-child{font-weight:600;white-space:nowrap}
       <label style="margin-top:8px">Translations to offer (as added in your API.Bible account, comma separated)<input name="votd_choices" placeholder="NLT, NIV, AMP"></label>
       <p class="note">A different well-known verse each day, from API.Bible, for the Verse tile. The menu lists the translations your API.Bible key can use. Pick the tile in Layout.</p>
       <p class="note" id="votdStatus"></p>
+      <p class="note" id="votdMissing" style="color:var(--bad)"></p>
+      <details><summary>Bibles your API.Bible key can use</summary><p class="note" id="votdAll"></p></details>
     </section>
 
     <section class="card">
@@ -370,7 +372,7 @@ function fillForm(cfg) {
   }
   const curV = cfg.votd_version || 'NIV';
   if (![...vs.options].some(o => o.value === curV)) {       // keep a saved choice the menu no longer offers visible, not silently changed
-    const o = new Option(curV + ' (not available right now)', curV); o.dataset.extra = '1'; vs.add(o);
+    const o = new Option(curV + ' (not available, see the note below)', curV); o.dataset.extra = '1'; vs.add(o);
   }
   const ls = document.getElementById('llmSel');
   if (!ls.options.length) for (const [k, lab] of Object.entries(S.llm_providers || {})) ls.add(new Option(lab, k));
@@ -447,6 +449,12 @@ function render() {
     : `Verse: using a backup (${vs_.source}, ${vs_.version}) because API.Bible could not be used. ${vs_.note || ''}`;
   if (vs_.copyright && !/public domain/i.test(vs_.copyright))
     document.getElementById('votdStatus').textContent += ' Copyright notice: ' + vs_.copyright;
+  const dg = (S.api_bible && S.api_bible.diag) || {};
+  document.getElementById('votdMissing').textContent = (dg.missing || []).map(m =>
+    `"${m.asked}" is on your list, but your API.Bible key has no Bible with that name.` +
+    (m.similar.length ? ` Close matches: ${m.similar.join('; ')}. Use the exact abbreviation in "Translations to offer".`
+                      : ' Check that it was added in your API.Bible dashboard.')).join(' ');
+  document.getElementById('votdAll').textContent = (dg.all || []).join('  ·  ') || '(not loaded yet)';
   if (S.api_bible && !S.api_bible.key_set)
     document.getElementById('votdStatus').textContent += ' No API.Bible key was found: set API_BIBLE_KEY on the server to choose a translation.';
   const vb = S.sources.ical_volleyball || {};

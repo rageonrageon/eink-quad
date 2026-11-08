@@ -731,7 +731,7 @@ class H(BaseHTTPRequestHandler):
         }
         st["feeds"] = {k: v[0] for k, v in S.WSJ_FEEDS.items()}
         st["votd_versions"] = S.votd_menu()
-        st["api_bible"] = {"key_set": bool(bibleapi.key()), "bibles": len(bibleapi.cached_bibles())}
+        st["api_bible"] = {"key_set": bool(bibleapi.key()), "bibles": len(bibleapi.cached_bibles()), "diag": bibleapi.diagnose()}
         st["llm_providers"] = S.LLM_PROVIDERS
         st["netcheck"] = netcheck.snapshot()
         import datetime as _dt
