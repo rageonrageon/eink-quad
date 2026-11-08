@@ -965,14 +965,19 @@ def brief(cfg, heads, wx, games, force=False) -> str:
                 parts.append(f"{r.label} {r.last.result} {r.last.us}-{r.last.them} vs {r.last.opp_name}")
             if r.next:
                 ln = f" ({r.next.odds.details}, O/U {r.next.odds.total:g})" if r.next.odds and r.next.odds.total else ""
-                parts.append(f"{r.label} next vs {r.next.opp_name} {time.strftime('%a %I:%M %p', time.localtime(r.next.start))}{ln}")
+                st = time.localtime(r.next.start)
+                day = "TODAY" if st[:3] == time.localtime()[:3] else time.strftime("%a", st)
+                parts.append(f"{r.label} play {r.next.opp_name} {day} {time.strftime('%I:%M %p', st)}{ln}")
         g = "; ".join(parts)
         prompt = (
             f"You write the one-line briefing on a small e-paper kitchen display in {city}. "
             f"It is {time.strftime('%A %I:%M %p')}. Using ONLY the facts below, write ONE plain sentence, "
             "max 115 characters, no emoji, no quotes, no preamble. Lead with what matters most today: "
-            "severe weather beats everything; then a local team playing today/tonight; otherwise the most "
-            "consequential news story. Don't restate routine weather unless rain or heat is notable.\n\n"
+            "severe weather beats everything; then the family's teams playing today/tonight; otherwise the most "
+            "consequential news story. If more than one team plays today, name every one of them, using 'vs' "
+            "to keep it short (for example: Broncos vs Panthers at noon, 49ers vs Raiders at 3:25). A team simply "
+            "plays its opponent: never say who is home or away, and never use the word 'host'. "
+            "Don't restate routine weather unless rain or heat is notable.\n\n"
             f"{w}\nSports: {g}\nHeadlines:\n" + "\n".join(lines))
         return _ask_llm(prompt, cfg)
 
