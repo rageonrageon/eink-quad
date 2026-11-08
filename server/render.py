@@ -1044,7 +1044,12 @@ def panel_verse(ctx: Ctx, size):
         text(d, (w / 2, 30 + (h - 30) / 2), "Verse unavailable right now", F("sb", 17), anchor="mm")
         return c
     ref = f'{v["ref"]} · {v["version"]}'
-    ry = h - 24
+    cr = (v.get("copyright") or "").strip()
+    if cr and "public domain" in cr.lower():
+        cr = ""
+    ry = h - 24 - (12 if cr else 0)
+    if cr:                                    # copyrighted translations show their notice, in small print
+        text(d, (12, h - 13), ellipsize(d, cr, F("cm", 11), w - 24), F("cm", 11))
     text(d, (w - 12, ry + 2), ellipsize(d, ref, F("cb", 17), w - 24), F("cb", 17), anchor="ra")
     body = "\u201c" + v["text"] + "\u201d"
     top, avail = 32, ry - 34

@@ -32,9 +32,11 @@ from PIL import Image, ImageChops  # noqa: E402
 
 import logos  # noqa: E402
 import agenda  # noqa: E402
+import bibleapi  # noqa: E402
 import countdown  # noqa: E402
 import history  # noqa: E402
 import ical  # noqa: E402
+import localtv  # noqa: E402
 import lunch  # noqa: E402
 import netcheck  # noqa: E402
 import render as R  # noqa: E402
@@ -59,8 +61,10 @@ DEFAULTS = {
     "city": "Tampa",             # named in the Claude brief's prompt
     "lat": 27.9506, "lon": -82.4572,
     "units": "F",
+    "tv_check": True,            # weekend mornings: which of the family's CBS/FOX games are really on Omaha TV
     "history_skip_politics": True,   # leave elections and the like out of This Day in History
     "votd_version": "NIV",       # translation for the verse of the day tile
+    "votd_choices": ["NLT", "NIV", "AMP"],   # the translations offered (the ones added in the API.Bible account)
     "layout": "five",            # quad = 2x2 (4 slots), five = 2 on top + 3 across the bottom (5 slots)
     "slots": ["weather", "lunch", "sports", "news", "calendar"],
     "interval_min": 10,          # the main cadence: every panel refreshes on this beat
@@ -124,7 +128,9 @@ def save_json(path, obj):
 
 countdown.PATH = os.environ.get("QUAD_COUNTDOWNS") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "countdowns.json")
 agenda.PATH = os.environ.get("QUAD_AGENDA") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "agenda.json")
+localtv.PATH = os.environ.get("QUAD_TVLOCAL") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "tv_local.json")
 cfg = {**DEFAULTS, **load_json(CONFIG_PATH, {})}
+bibleapi.set_allowed(cfg.get("votd_choices"))
 # settings saved before the layout existed may carry too few slots: pad from the defaults
 _want = 5 if cfg.get("layout") == "five" else 4
 cfg["slots"] = (list(cfg["slots"]) + [p for p in DEFAULTS["slots"] if p not in cfg["slots"]])[:_want]
@@ -285,6 +291,10 @@ class Board:
                 traceback.print_exc()
         elif name == "verse":
             self.snap["verse"] = S.votd(cfg.get("votd_version", "NIV"), force)
+            try:                       # fills the translation menu once a key is set (refreshed daily)
+                bibleapi.bibles()
+            except Exception:
+                pass
         elif name == "countdown":
             import datetime as _dt
             self.snap["countdowns"] = countdown.upcoming(_dt.date.today())
@@ -397,6 +407,7 @@ class Board:
                 self.page = "quad"
                 self.redraw("page timeout", major=True)
         self.check_notes()
+        self.maybe_tv_check()
         if quiet_now():
             return
         iv = max(1, cfg["interval_min"]) * 60
@@ -431,6 +442,36 @@ class Board:
                 traceback.print_exc()
         with self.cond:
             self.redraw("scheduled " + ",".join(due), major="weather" in due)
+
+    # -- which weekend games are really on Omaha TV
+    def maybe_tv_check(self, force=False):
+        """Saturday and Sunday from 6 AM, once a day (so a restart later in the day still catches up):
+        ask the Omaha stations' schedule pages about the family's CBS/FOX games, save the answers, and
+        rewrite the brief so the network shows after the game time. force=True is the settings button."""
+        if not cfg.get("tv_check", True) or getattr(self, "_tv_busy", False):
+            return
+        lt = time.localtime()
+        day = time.strftime("%Y-%m-%d", lt)
+        if not force and (lt.tm_wday not in (5, 6) or lt.tm_hour < 6 or localtv.ran_on(day)):
+            return
+        teams = self.snap.get("teams")
+        if not teams:               # sports data not in yet: try again on the next tick
+            return
+        self._tv_busy = True
+        when = time.strftime("%a %I:%M %p", lt) + (" (button)" if force else "")
+
+        def run():
+            try:
+                res = localtv.refresh(teams, time.time(), when)
+                self.note_event("Omaha TV check: " + res["summary"])
+                self.take("brief", force=True)
+                with self.cond:
+                    self.redraw("Omaha TV check")
+            except Exception:
+                traceback.print_exc()
+            finally:
+                self._tv_busy = False
+        threading.Thread(target=run, daemon=True).start()
 
     # -- notes from the note box (optional)
     def check_notes(self):
@@ -676,9 +717,12 @@ class H(BaseHTTPRequestHandler):
             "history": history.status(),
         }
         st["feeds"] = {k: v[0] for k, v in S.WSJ_FEEDS.items()}
-        st["votd_versions"] = S.VOTD_VERSIONS
+        st["votd_versions"] = S.votd_menu()
+        st["api_bible"] = {"key_set": bool(bibleapi.key()), "bibles": len(bibleapi.cached_bibles())}
         st["llm_providers"] = S.LLM_PROVIDERS
         st["netcheck"] = netcheck.snapshot()
+        st["tv_local"] = {**localtv.summary(), "enabled": bool(cfg.get("tv_check", True)),
+                          "busy": bool(getattr(board, "_tv_busy", False))}
         try:
             st["bar"] = R.strip_source(board.ctx())
         except Exception:
@@ -723,6 +767,7 @@ class H(BaseHTTPRequestHandler):
         llm_changed = any(new.get(k) != cfg.get(k) for k in ("llm_brief", "llm_provider", "llm_model", "deepseek_model"))
         cfg.clear()
         cfg.update(new)
+        bibleapi.set_allowed(cfg.get("votd_choices"))
         S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
         save_json(CONFIG_PATH, {k: v for k, v in cfg.items() if DEFAULTS.get(k) != v})
         if llm_changed:                  # rewrite the brief now, off to the side: the model can take a few seconds
@@ -750,6 +795,9 @@ class H(BaseHTTPRequestHandler):
         a = body.get("action")
         if a == "netcheck":
             netcheck.run_async()
+            return {"ok": True}
+        if a == "tvcheck":
+            board.maybe_tv_check(force=True)
             return {"ok": True}
         if a == "refresh":
             with board.cond:

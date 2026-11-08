@@ -121,6 +121,7 @@ td:first-child{font-weight:600;white-space:nowrap}
     <section class="card">
       <h2>Health</h2>
       <table id="health"></table>
+      <button type="button" class="ghost" style="margin-top:10px" onclick="act({action:'tvcheck'})">Check Omaha TV now</button>
       <button type="button" class="ghost" style="margin-top:10px" onclick="act({action:'netcheck'})">Run connectivity test</button>
       <p class="note" style="margin-bottom:0">Tries a few websites from the server itself, to see which ones refuse it. Results appear in the table above.</p>
       <h2 style="margin-top:16px">Recent activity</h2>
@@ -186,7 +187,8 @@ td:first-child{font-weight:600;white-space:nowrap}
     <section class="card">
       <h2>Verse of the day</h2>
       <label>Translation<select name="votd_version" id="votdSel"></select></label>
-      <p class="note">Daily verse from Bible Gateway, for the Verse tile. Pick the tile in Layout.</p>
+      <label style="margin-top:8px">Translations to offer (as added in your API.Bible account, comma separated)<input name="votd_choices" placeholder="NLT, NIV, AMP"></label>
+      <p class="note">A different well-known verse each day, from API.Bible, for the Verse tile. The menu lists the translations your API.Bible key can use. Pick the tile in Layout.</p>
       <p class="note" id="votdStatus"></p>
     </section>
 
@@ -220,6 +222,7 @@ td:first-child{font-weight:600;white-space:nowrap}
       </div>
       <label class="inline" style="margin-top:8px"><input type="checkbox" name="show_idle"> Show teams with nothing scheduled</label>
       <label class="inline"><input type="checkbox" name="sports_logos"> Team logos</label>
+      <label class="inline"><input type="checkbox" name="tv_check"> On weekend mornings, check which CBS/FOX games are really on Omaha TV (the brief then adds the network after the time)</label>
       <label class="inline"><input type="checkbox" name="odds"> Betting odds (DraftKings, via ESPN)</label>
       <div class="grid2" style="margin-top:6px"><label>Odds shown in the corner<select name="odds_style">
         <option value="spread">Point spread (TB -1.5)</option><option value="moneyline">Moneyline (TB -115)</option>
@@ -356,7 +359,15 @@ document.addEventListener('change', (e) => {
 function fillForm(cfg) {
   const f = document.getElementById('form');
   const vs = document.getElementById('votdSel');
-  if (!vs.options.length) for (const [k, lab] of Object.entries(S.votd_versions || {})) vs.add(new Option(lab, k));
+  const wantV = Object.keys(S.votd_versions || {});
+  if (wantV.join() !== [...vs.options].filter(o => !o.dataset.extra).map(o => o.value).join()) {   // the menu changed (a key was added)
+    vs.innerHTML = '';
+    for (const [k, lab] of Object.entries(S.votd_versions || {})) vs.add(new Option(lab, k));
+  }
+  const curV = cfg.votd_version || 'NIV';
+  if (![...vs.options].some(o => o.value === curV)) {       // keep a saved choice the menu no longer offers visible, not silently changed
+    const o = new Option(curV + ' (not available right now)', curV); o.dataset.extra = '1'; vs.add(o);
+  }
   const ls = document.getElementById('llmSel');
   if (!ls.options.length) for (const [k, lab] of Object.entries(S.llm_providers || {})) ls.add(new Option(lab, k));
   for (const el of f.elements) {
@@ -428,8 +439,12 @@ function render() {
     : hs_.age_s == null ? 'History: not fetched yet.' : `History: updated ${ago(hs_.age_s)}.`;
   const vs_ = S.sources.verse || {};
   document.getElementById('votdStatus').textContent = vs_.age_s == null ? (vs_.error ? 'Verse: failing. ' + vs_.error : 'Verse: not fetched yet.')
-    : vs_.source === 'Bible Gateway' ? `Verse: Bible Gateway, updated ${ago(vs_.age_s)}.`
-    : `Verse: using a backup (${vs_.source}, ${vs_.version}) because Bible Gateway failed. ${vs_.note || ''}`;
+    : vs_.source === 'API.Bible' ? `Verse: API.Bible (${vs_.version}), updated ${ago(vs_.age_s)}.${vs_.note ? ' ' + vs_.note + '.' : ''}`
+    : `Verse: using a backup (${vs_.source}, ${vs_.version}) because API.Bible could not be used. ${vs_.note || ''}`;
+  if (vs_.copyright && !/public domain/i.test(vs_.copyright))
+    document.getElementById('votdStatus').textContent += ' Copyright notice: ' + vs_.copyright;
+  if (S.api_bible && !S.api_bible.key_set)
+    document.getElementById('votdStatus').textContent += ' No API.Bible key was found: set API_BIBLE_KEY on the server to choose a translation.';
   const vb = S.sources.ical_volleyball || {};
   document.getElementById('vbStatus').textContent = !vb.configured ? 'Volleyball feed: not connected (set QUAD_ICAL_URL_VOLLEYBALL on the server).'
     : vb.error ? 'Volleyball feed: sync problem, showing the last good copy. ' + vb.error
@@ -463,6 +478,11 @@ function render() {
     : bl.ok ? `last attempt ok · ${bAgo}${bl.detail ? ' · ' + esc(bl.detail) : ''}`
     : `<span style="color:var(--bad)">last attempt failed ${bAgo}: ${esc(bl.detail)}</span>`]);
   rows.push(['Top bar is showing', esc(S.bar || '—')]);
+  const tv = S.tv_local || {};
+  rows.push(['Omaha TV check', tv.enabled === false ? 'off (turn on under Sports)'
+    : tv.busy ? 'checking now…'
+    : tv.at ? `${esc(tv.when)} · ${ago(Math.round(Date.now() / 1000 - tv.at))}<br>${esc(tv.summary)}`
+    : 'not run yet (it runs Saturday and Sunday from 6 AM)']);
   const nc = S.netcheck || {results: []};
   if (nc.running) rows.push(['Connectivity test', 'running…']);
   for (const r of nc.results) {

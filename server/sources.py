@@ -406,6 +406,8 @@ class Game:
     opp_rank: int | None = None
     opp_id: str = ""
     opp_record: str = ""
+    our_full: str = ""       # full ESPN names ("San Francisco 49ers"), for matching TV listings
+    opp_full: str = ""
 
     @property
     def result(self):
@@ -474,7 +476,8 @@ def _parse_event(key, e, record=""):
                 them=score(theirs) if theirs and st.get("state") != "pre" else None,
                 tv=tv, record=record, note=note, time_tbd=(e.get("timeValid") is False), our_rank=rank(ours), opp_rank=rank(theirs) if theirs else None,
                 our_logo=logo(ours), opp_logo=logo(theirs) if ot.get("abbreviation") not in (None, "TBD") else "",
-                event_id=str(e.get("id", "")), opp_id=str(ot.get("id", "")))
+                event_id=str(e.get("id", "")), opp_id=str(ot.get("id", "")),
+                our_full=(ours.get("team", {}).get("displayName") or ""), opp_full=(ot.get("displayName") or ""))
 
 
 _opp_rec: dict[tuple, Cached] = {}
@@ -740,22 +743,27 @@ def sports_status():
 
 # ============================================================ verse of the day
 
-VOTD_VERSIONS = {"NIV": "NIV", "NIRV": "NIrV (easier to read)", "ESV": "ESV", "NLT": "NLT", "CSB": "CSB",
-                 "NKJV": "NKJV", "KJV": "KJV", "NASB": "NASB", "WEB": "WEB (public domain)", "MSG": "The Message",
-                 "AMP": "Amplified", "ICB": "ICB (easy reading)"}
+# What the translation menu offers when there is no API.Bible key: only what the backups can really give.
+VOTD_BACKUP_MENU = {"NIV": "NIV (backup source)", "KJV": "KJV (built-in list)"}
 _votd: dict[str, Cached] = {}
 
 
-def _votd_gateway(version):
-    r = requests.get("https://www.biblegateway.com/votd/get/", params={"format": "json", "version": version},
-                     headers={"User-Agent": UA_BOT}, timeout=10)
-    r.raise_for_status()
-    v = r.json()["votd"]
-    txt = html.unescape(v.get("rawtext") or re.sub(r"<[^>]+>", "", v.get("text", "")))
-    txt = re.sub(r"\s+", " ", txt).strip().strip("\u201c\u201d\"").strip()
-    if not txt:
-        raise ValueError("empty verse")
-    return {"text": txt, "ref": v.get("display_ref") or v.get("reference", ""), "version": v.get("version_id") or version}
+def votd_menu() -> dict:
+    """The translation menu: whatever the API.Bible key can use, else just the two backups."""
+    try:
+        import bibleapi
+        m = bibleapi.menu()
+        if m:
+            return m
+    except Exception:
+        pass
+    return dict(VOTD_BACKUP_MENU)
+
+
+def _votd_apibible(version):
+    """The main source: API.Bible, in the chosen translation (needs API_BIBLE_KEY, see bibleapi.py)."""
+    import bibleapi
+    return bibleapi.verse_of_the_day(version)
 
 
 def _votd_ourmanna(version):
@@ -777,33 +785,34 @@ def _votd_builtin(version):
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "verses_kjv.json"), encoding="utf-8") as f:
         verses = json.load(f)
     v = verses[_dt.date.today().timetuple().tm_yday % len(verses)]
-    return {"text": v["text"], "ref": v["ref"], "version": "KJV"}
+    return {"text": v["text"], "ref": v["ref"].replace("Psalms ", "Psalm "), "version": "KJV"}
 
 
 def votd(version="NIV", force=False):
     """Verse of the day: {"text", "ref", "version", "source", "note"}, or None before the first
-    fetch. Tries Bible Gateway in the chosen translation, then OurManna, then a built-in list,
-    so a verse always shows. "note" says why a backup was used. The verse changes once a day, so
-    a good Bible Gateway result is cached for an hour; a backup is retried after ten minutes."""
-    version = version if version in VOTD_VERSIONS else "NIV"
-    c = _votd.setdefault(version, Cached(3600))
+    fetch. Tries API.Bible in the chosen translation, then OurManna (NIV), then a built-in KJV
+    list, so a verse always shows. "note" says why a backup was used. The verse changes once a
+    day, so a good API.Bible result is cached for six hours; a backup is retried after ten minutes."""
+    version = (version or "NIV").strip() or "NIV"
+    c = _votd.setdefault(version, Cached(6 * 3600))
 
     def fetch():
         problems = []
-        for name, fn in (("Bible Gateway", _votd_gateway), ("OurManna", _votd_ourmanna), ("built-in list", _votd_builtin)):
+        for name, fn in (("API.Bible", _votd_apibible), ("OurManna", _votd_ourmanna), ("built-in list", _votd_builtin)):
             try:
                 v = fn(version)
             except Exception as e:
                 problems.append(f"{name}: {type(e).__name__}: {e}"[:160])
                 continue
             v["source"] = name
-            v["note"] = "; ".join(problems)
+            extra = v.pop("note_extra", "")
+            v["note"] = "; ".join(problems + ([extra] if extra else []))
             v["at"] = time.time()
             return v
         raise RuntimeError("; ".join(problems))
     fetch.__name__ = f"votd_{version}"
     v = c.get(fetch, force)
-    c.ttl = 3600 if (v and v.get("source") == "Bible Gateway") else 600
+    c.ttl = 6 * 3600 if (v and v.get("source") == "API.Bible") else 600
     return v
 
 
@@ -815,7 +824,8 @@ def votd_status(version=None):
         return {"age_s": None, "error": None, "source": "", "note": ""}
     st = c.status()
     v = c.value or {}
-    return {**st, "source": v.get("source", ""), "note": v.get("note", ""), "version": v.get("version", "")}
+    return {**st, "source": v.get("source", ""), "note": v.get("note", ""), "version": v.get("version", ""),
+            "copyright": v.get("copyright", "")}
 
 
 _brief = Cached(3600)
@@ -967,7 +977,14 @@ def brief(cfg, heads, wx, games, force=False) -> str:
                 ln = f" ({r.next.odds.details}, O/U {r.next.odds.total:g})" if r.next.odds and r.next.odds.total else ""
                 st = time.localtime(r.next.start)
                 day = "TODAY" if st[:3] == time.localtime()[:3] else time.strftime("%a", st)
-                parts.append(f"{r.label} play {r.next.opp_name} {day} {time.strftime('%I:%M %p', st)}{ln}")
+                tag = ""
+                try:                    # the weekend check of which games are really on Omaha TV (see localtv.py)
+                    import localtv
+                    v = localtv.lookup(r.next)
+                    tag = f" (on {v} in Omaha)" if v in ("CBS", "FOX") else " (not on Omaha TV)" if v == "none" else ""
+                except Exception:
+                    pass
+                parts.append(f"{r.label} play {r.next.opp_name} {day} {time.strftime('%I:%M %p', st)}{ln}{tag}")
         g = "; ".join(parts)
         prompt = (
             f"You write the one-line briefing on a small e-paper kitchen display in {city}. "
@@ -978,6 +995,9 @@ def brief(cfg, heads, wx, games, force=False) -> str:
             "to keep it short (pattern only, use the real names and times from the facts: Team A vs Team B at "
             "noon, Team C vs Team D at 3:25). A team simply "
             "plays its opponent: never say who is home or away, and never use the word 'host'. "
+            "A game marked (on FOX in Omaha) or (on CBS in Omaha) can be watched on local TV: put that network "
+            "in parentheses right after its time, like 3:25 (FOX). Never add a network to a game that is not marked "
+            "that way, and say nothing else about TV (for example, never write that a game is not on local TV). "
             "Don't restate routine weather unless rain or heat is notable.\n\n"
             f"{w}\nSports: {g}\nHeadlines:\n" + "\n".join(lines))
         return _ask_llm(prompt, cfg)

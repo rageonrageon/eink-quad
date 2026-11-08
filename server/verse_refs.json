@@ -1,0 +1,422 @@
+[
+ {
+  "id": "JHN.3.16",
+  "ref": "John 3:16"
+ },
+ {
+  "id": "PSA.23.1",
+  "ref": "Psalms 23:1"
+ },
+ {
+  "id": "PRO.3.5-PRO.3.6",
+  "ref": "Proverbs 3:5-6"
+ },
+ {
+  "id": "PHP.4.13",
+  "ref": "Philippians 4:13"
+ },
+ {
+  "id": "JER.29.11",
+  "ref": "Jeremiah 29:11"
+ },
+ {
+  "id": "ROM.8.28",
+  "ref": "Romans 8:28"
+ },
+ {
+  "id": "ISA.41.10",
+  "ref": "Isaiah 41:10"
+ },
+ {
+  "id": "JOS.1.9",
+  "ref": "Joshua 1:9"
+ },
+ {
+  "id": "PSA.46.1",
+  "ref": "Psalms 46:1"
+ },
+ {
+  "id": "MAT.6.33",
+  "ref": "Matthew 6:33"
+ },
+ {
+  "id": "PHP.4.6",
+  "ref": "Philippians 4:6"
+ },
+ {
+  "id": "PSA.118.24",
+  "ref": "Psalms 118:24"
+ },
+ {
+  "id": "COL.3.23",
+  "ref": "Colossians 3:23"
+ },
+ {
+  "id": "PRO.22.6",
+  "ref": "Proverbs 22:6"
+ },
+ {
+  "id": "1CO.13.4-1CO.13.5",
+  "ref": "1 Corinthians 13:4-5"
+ },
+ {
+  "id": "GAL.5.22-GAL.5.23",
+  "ref": "Galatians 5:22-23"
+ },
+ {
+  "id": "EPH.2.8-EPH.2.9",
+  "ref": "Ephesians 2:8-9"
+ },
+ {
+  "id": "PSA.121.1-PSA.121.2",
+  "ref": "Psalms 121:1-2"
+ },
+ {
+  "id": "MAT.5.16",
+  "ref": "Matthew 5:16"
+ },
+ {
+  "id": "ROM.12.2",
+  "ref": "Romans 12:2"
+ },
+ {
+  "id": "2TI.1.7",
+  "ref": "2 Timothy 1:7"
+ },
+ {
+  "id": "PRO.16.3",
+  "ref": "Proverbs 16:3"
+ },
+ {
+  "id": "JAS.1.5",
+  "ref": "James 1:5"
+ },
+ {
+  "id": "PSA.119.105",
+  "ref": "Psalms 119:105"
+ },
+ {
+  "id": "1JN.4.19",
+  "ref": "1 John 4:19"
+ },
+ {
+  "id": "MIC.6.8",
+  "ref": "Micah 6:8"
+ },
+ {
+  "id": "ISA.40.31",
+  "ref": "Isaiah 40:31"
+ },
+ {
+  "id": "MAT.11.28",
+  "ref": "Matthew 11:28"
+ },
+ {
+  "id": "PSA.37.4",
+  "ref": "Psalms 37:4"
+ },
+ {
+  "id": "LAM.3.22-LAM.3.23",
+  "ref": "Lamentations 3:22-23"
+ },
+ {
+  "id": "1TH.5.16-1TH.5.18",
+  "ref": "1 Thessalonians 5:16-18"
+ },
+ {
+  "id": "PSA.27.1",
+  "ref": "Psalms 27:1"
+ },
+ {
+  "id": "PSA.34.8",
+  "ref": "Psalms 34:8"
+ },
+ {
+  "id": "PSA.139.14",
+  "ref": "Psalms 139:14"
+ },
+ {
+  "id": "PSA.100.4",
+  "ref": "Psalms 100:4"
+ },
+ {
+  "id": "PSA.55.22",
+  "ref": "Psalms 55:22"
+ },
+ {
+  "id": "PSA.91.1-PSA.91.2",
+  "ref": "Psalms 91:1-2"
+ },
+ {
+  "id": "PSA.103.1",
+  "ref": "Psalms 103:1"
+ },
+ {
+  "id": "PSA.136.1",
+  "ref": "Psalms 136:1"
+ },
+ {
+  "id": "PSA.145.18",
+  "ref": "Psalms 145:18"
+ },
+ {
+  "id": "PSA.16.8",
+  "ref": "Psalms 16:8"
+ },
+ {
+  "id": "PRO.1.7",
+  "ref": "Proverbs 1:7"
+ },
+ {
+  "id": "PRO.17.17",
+  "ref": "Proverbs 17:17"
+ },
+ {
+  "id": "PRO.18.10",
+  "ref": "Proverbs 18:10"
+ },
+ {
+  "id": "PRO.27.17",
+  "ref": "Proverbs 27:17"
+ },
+ {
+  "id": "ECC.3.1",
+  "ref": "Ecclesiastes 3:1"
+ },
+ {
+  "id": "ISA.26.3",
+  "ref": "Isaiah 26:3"
+ },
+ {
+  "id": "ISA.9.6",
+  "ref": "Isaiah 9:6"
+ },
+ {
+  "id": "ISA.55.8-ISA.55.9",
+  "ref": "Isaiah 55:8-9"
+ },
+ {
+  "id": "JER.17.7",
+  "ref": "Jeremiah 17:7"
+ },
+ {
+  "id": "MAT.5.9",
+  "ref": "Matthew 5:9"
+ },
+ {
+  "id": "MAT.7.7",
+  "ref": "Matthew 7:7"
+ },
+ {
+  "id": "MAT.18.20",
+  "ref": "Matthew 18:20"
+ },
+ {
+  "id": "MAT.19.26",
+  "ref": "Matthew 19:26"
+ },
+ {
+  "id": "MAT.28.20",
+  "ref": "Matthew 28:20"
+ },
+ {
+  "id": "MRK.9.23",
+  "ref": "Mark 9:23"
+ },
+ {
+  "id": "LUK.1.37",
+  "ref": "Luke 1:37"
+ },
+ {
+  "id": "LUK.6.31",
+  "ref": "Luke 6:31"
+ },
+ {
+  "id": "LUK.12.34",
+  "ref": "Luke 12:34"
+ },
+ {
+  "id": "JHN.1.1",
+  "ref": "John 1:1"
+ },
+ {
+  "id": "JHN.8.12",
+  "ref": "John 8:12"
+ },
+ {
+  "id": "JHN.10.10",
+  "ref": "John 10:10"
+ },
+ {
+  "id": "JHN.13.34",
+  "ref": "John 13:34"
+ },
+ {
+  "id": "JHN.14.6",
+  "ref": "John 14:6"
+ },
+ {
+  "id": "JHN.14.27",
+  "ref": "John 14:27"
+ },
+ {
+  "id": "JHN.15.5",
+  "ref": "John 15:5"
+ },
+ {
+  "id": "JHN.15.13",
+  "ref": "John 15:13"
+ },
+ {
+  "id": "JHN.16.33",
+  "ref": "John 16:33"
+ },
+ {
+  "id": "ACT.1.8",
+  "ref": "Acts 1:8"
+ },
+ {
+  "id": "ROM.5.8",
+  "ref": "Romans 5:8"
+ },
+ {
+  "id": "ROM.12.12",
+  "ref": "Romans 12:12"
+ },
+ {
+  "id": "ROM.15.13",
+  "ref": "Romans 15:13"
+ },
+ {
+  "id": "1CO.10.13",
+  "ref": "1 Corinthians 10:13"
+ },
+ {
+  "id": "1CO.16.13-1CO.16.14",
+  "ref": "1 Corinthians 16:13-14"
+ },
+ {
+  "id": "2CO.5.7",
+  "ref": "2 Corinthians 5:7"
+ },
+ {
+  "id": "2CO.5.17",
+  "ref": "2 Corinthians 5:17"
+ },
+ {
+  "id": "2CO.9.7",
+  "ref": "2 Corinthians 9:7"
+ },
+ {
+  "id": "2CO.12.9",
+  "ref": "2 Corinthians 12:9"
+ },
+ {
+  "id": "GAL.6.9",
+  "ref": "Galatians 6:9"
+ },
+ {
+  "id": "EPH.4.32",
+  "ref": "Ephesians 4:32"
+ },
+ {
+  "id": "EPH.6.10",
+  "ref": "Ephesians 6:10"
+ },
+ {
+  "id": "PHP.1.6",
+  "ref": "Philippians 1:6"
+ },
+ {
+  "id": "PHP.4.4",
+  "ref": "Philippians 4:4"
+ },
+ {
+  "id": "1TH.5.11",
+  "ref": "1 Thessalonians 5:11"
+ },
+ {
+  "id": "2TH.3.3",
+  "ref": "2 Thessalonians 3:3"
+ },
+ {
+  "id": "1TI.4.12",
+  "ref": "1 Timothy 4:12"
+ },
+ {
+  "id": "2TI.3.16",
+  "ref": "2 Timothy 3:16"
+ },
+ {
+  "id": "HEB.11.1",
+  "ref": "Hebrews 11:1"
+ },
+ {
+  "id": "HEB.13.8",
+  "ref": "Hebrews 13:8"
+ },
+ {
+  "id": "1PE.5.7",
+  "ref": "1 Peter 5:7"
+ },
+ {
+  "id": "1JN.1.9",
+  "ref": "1 John 1:9"
+ },
+ {
+  "id": "1JN.4.4",
+  "ref": "1 John 4:4"
+ },
+ {
+  "id": "GEN.1.1",
+  "ref": "Genesis 1:1"
+ },
+ {
+  "id": "GEN.1.27",
+  "ref": "Genesis 1:27"
+ },
+ {
+  "id": "EXO.14.14",
+  "ref": "Exodus 14:14"
+ },
+ {
+  "id": "DEU.31.6",
+  "ref": "Deuteronomy 31:6"
+ },
+ {
+  "id": "DEU.6.5",
+  "ref": "Deuteronomy 6:5"
+ },
+ {
+  "id": "1SA.16.7",
+  "ref": "1 Samuel 16:7"
+ },
+ {
+  "id": "NEH.8.10",
+  "ref": "Nehemiah 8:10"
+ },
+ {
+  "id": "ZEP.3.17",
+  "ref": "Zephaniah 3:17"
+ },
+ {
+  "id": "HAB.3.19",
+  "ref": "Habakkuk 3:19"
+ },
+ {
+  "id": "NAM.1.7",
+  "ref": "Nahum 1:7"
+ },
+ {
+  "id": "PSA.4.8",
+  "ref": "Psalms 4:8"
+ },
+ {
+  "id": "PSA.56.3-PSA.56.4",
+  "ref": "Psalms 56:3-4"
+ },
+ {
+  "id": "PSA.62.1",
+  "ref": "Psalms 62:1"
+ }
+]
