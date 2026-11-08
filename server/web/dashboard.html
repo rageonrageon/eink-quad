@@ -447,7 +447,20 @@ function render() {
   rows.push(['Weather', st(src.weather)], ['NWS alerts', st(src.alerts)], ['Quotes', st(src.quotes)]);
   for (const [k, v] of Object.entries(src.news)) rows.push(['WSJ ' + (S.feeds[k] || k), st(v)]);
   for (const [k, v] of Object.entries(src.sports)) rows.push([S.teams[k] || k, st(v)]);
-  rows.push(['Plane feed', st(src.sky)], ['Claude brief', st(src.brief)]);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
+  const bl = bs.last || {};
+  const pName = {claude: 'Claude program', anthropic: 'Claude API', deepseek: 'DeepSeek'}[bs.provider] || bs.provider;
+  const bModel = bl.model || (bs.provider === 'deepseek' ? S.cfg.deepseek_model : S.cfg.llm_model);
+  const bAgo = bl.at ? ago(Math.round(Date.now() / 1000 - bl.at)) : '';
+  rows.push(['Plane feed', st(src.sky)]);
+  rows.push([`Brief · ${esc(pName)} · ${esc(bModel)}`,
+    !S.cfg.llm_brief ? 'off'
+    : !bs.ready ? '<span style="color:var(--bad)">not available: key not set, or program not installed</span>'
+    : !bl.at ? 'no attempt yet'
+    : bl.ok === null ? `trying now… (started ${bAgo})`
+    : bl.ok ? `last attempt ok · ${bAgo}${bl.detail ? ' · ' + esc(bl.detail) : ''}`
+    : `<span style="color:var(--bad)">last attempt failed ${bAgo}: ${esc(bl.detail)}</span>`]);
+  rows.push(['Top bar is showing', esc(S.bar || '—')]);
   if (src.events && src.events.upcoming && src.events.upcoming.length)
     rows.push(['Next sky event', src.events.upcoming.map(e => `${e.title} in ${Math.round(e.in_s/3600)}h (${e.confidence})`).join('<br>')]);
   rows.push(['Render', `${S.render_ms} ms · cycle ${S.cycle}`], ['Device', `${d.polls} polls · ${d.boots} boots · on v${d.version}`]);

@@ -677,6 +677,10 @@ class H(BaseHTTPRequestHandler):
         st["feeds"] = {k: v[0] for k, v in S.WSJ_FEEDS.items()}
         st["votd_versions"] = S.VOTD_VERSIONS
         st["llm_providers"] = S.LLM_PROVIDERS
+        try:
+            st["bar"] = R.strip_source(board.ctx())
+        except Exception:
+            st["bar"] = ""
         st["teams"] = {k: v[0] for k, v in S.TEAMS.items()}
         st["panels"] = list(R.PANELS)
         st["notes_available"] = bool(nb is not None and notes_db() is not None)

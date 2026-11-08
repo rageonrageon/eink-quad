@@ -819,6 +819,7 @@ def votd_status(version=None):
 
 
 _brief = Cached(3600)
+_brief_info = {"provider": "", "model": "", "at": 0.0, "ok": None, "detail": ""}     # the latest attempt
 
 
 LLM_PROVIDERS = {"claude": "Claude program on the server (local installs only)",
@@ -870,21 +871,46 @@ def _ask_deepseek(prompt, cfg):
         raise RuntimeError("DEEPSEEK_API_KEY is not set on the server")
     hdr = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
-    def call(model):
-        return requests.post("https://api.deepseek.com/chat/completions", headers=hdr, timeout=60,
-                             json={"model": model, "messages": [{"role": "user", "content": prompt}],
-                                   "max_tokens": 100, "temperature": 0.4, "stream": False})
+    def call(model, max_tokens=300, no_think=True):
+        body = {"model": model, "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens, "temperature": 0.4, "stream": False}
+        if no_think:      # DeepSeek's models think by default, and the thinking eats the token budget;
+            body["thinking"] = {"type": "disabled"}     # a one-line summary needs none
+        return requests.post("https://api.deepseek.com/chat/completions", headers=hdr, timeout=60, json=body)
+
+    def parse(r):
+        j = r.json()
+        ch = (j.get("choices") or [{}])[0]
+        msg = ch.get("message") or {}
+        _brief_info["model"] = j.get("model") or _brief_info.get("model", "")       # what DeepSeek says it ran
+        return ((msg.get("content") or "").strip(), ch.get("finish_reason"), bool(msg.get("reasoning_content")),
+                (j.get("usage") or {}).get("completion_tokens"))
+
     model = cfg.get("deepseek_model") or "deepseek-flash"
     r = call(model)
+    if r.status_code == 400 and "thinking" in r.text.lower():        # this model does not take the switch
+        r = call(model, no_think=False)
     if r.status_code in (400, 404, 422):
         m = requests.get("https://api.deepseek.com/models", headers=hdr, timeout=20)
         ids = [x.get("id", "") for x in (m.json().get("data", []) if m.ok else [])]
         alt = next((i for i in ids if "flash" in i), None) or next((i for i in ids if "chat" in i), None)
         if alt and alt != model:
-            r = call(alt)
+            model = alt
+            r = call(model)
     if not r.ok:
         raise RuntimeError(f"DeepSeek HTTP {r.status_code}: {r.text[:120]}")
-    return _tidy(r.json()["choices"][0]["message"]["content"])
+    content, finish, reasoned, tokens = parse(r)
+    if not content and finish == "length":      # it ran out of room before answering: allow far more, once
+        r = call(model, max_tokens=2000, no_think=False)
+        if not r.ok:
+            raise RuntimeError(f"DeepSeek HTTP {r.status_code}: {r.text[:120]}")
+        content, finish, reasoned, tokens = parse(r)
+    if not content:
+        raise RuntimeError(f"DeepSeek returned an empty answer (finish_reason={finish}, "
+                           f"reasoning {'present' if reasoned else 'absent'}, completion_tokens={tokens}, "
+                           f"model={_brief_info.get('model') or model})")
+    _brief_info["detail"] = f"{tokens} tokens" if tokens else ""
+    return _tidy(content)
 
 
 def _ask_llm(prompt, cfg):
@@ -892,7 +918,17 @@ def _ask_llm(prompt, cfg):
     fn = {"claude": _ask_claude_cli, "anthropic": _ask_anthropic, "deepseek": _ask_deepseek}.get(provider)
     if fn is None:
         raise RuntimeError(f"unknown brief provider {provider!r}")
-    return fn(prompt, cfg)
+    model = (cfg.get("deepseek_model") or "deepseek-flash") if provider == "deepseek" else \
+            (cfg.get("llm_model") or "claude-haiku-4-5-20251001")
+    # what we are about to try, shown on the Health panel whether or not it works
+    _brief_info.update(provider=provider, model=model, at=time.time(), ok=None, detail="")
+    try:
+        out = fn(prompt, cfg)
+    except Exception as e:
+        _brief_info.update(ok=False, detail=str(e)[:220])
+        raise
+    _brief_info["ok"] = True
+    return out
 
 
 def llm_ready(provider):
@@ -944,4 +980,4 @@ def brief(cfg, heads, wx, games, force=False) -> str:
 
 
 def brief_status():
-    return {**_brief.status(), "text": _brief.value}
+    return {**_brief.status(), "text": _brief.value, "last": dict(_brief_info)}

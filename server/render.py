@@ -1229,6 +1229,25 @@ def strip(ctx: Ctx):
     return c
 
 
+def strip_source(ctx: Ctx) -> str:
+    """Plain words for where the bar's text is coming from, mirroring strip() above."""
+    if ctx.sticky:
+        return "your posted message"
+    if _severe_alert(ctx):
+        return "a severe weather alert"
+    if not ctx.cfg.get("headline_bar", True):
+        return "nothing (headline bar is off)"
+    if ctx.brief:
+        return "the AI brief"
+    for r in ctx.teams:
+        if r.live:
+            return "a live game (no AI brief available)"
+    for r in ctx.teams:
+        if r.next and r.next.start - ctx.now < 12 * 3600:
+            return "a game within 12 hours (no AI brief available)"
+    return "the top headline (no AI brief available)" if ctx.heads else "nothing"
+
+
 def _next_up(ctx):
     for r in ctx.teams:
         if r.live:
