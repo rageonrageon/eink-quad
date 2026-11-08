@@ -354,6 +354,7 @@ class Ctx:
     volleyball_on: bool = False                      # is a volleyball feed configured at all
     countdowns: list = field(default_factory=list)   # countdown.Item rows, soonest first
     verse: dict | None = None                        # {"text", "ref", "version"} from sources.votd
+    history: list = field(default_factory=list)      # [{"year", "text"}] from history.pick
 
 
 def _deg(v):
@@ -1062,6 +1063,41 @@ def panel_verse(ctx: Ctx, size):
     return c
 
 
+def panel_history(ctx: Ctx, size):
+    """This day in history: two events, each a big year with the event under it."""
+    c, d = canvas(size)
+    w, h = size
+    tm = time.localtime(ctx.now)
+    text(d, (12, 3), "THIS DAY IN HISTORY", F("cb", 18))
+    text(d, (w - 12, 5), time.strftime("%b ", tm) + str(tm.tm_mday), F("cm", 15), anchor="ra")
+    d.line((10, 25, w - 10, 25), fill=INK, width=2)
+    evs = ctx.history
+    if not evs:
+        text(d, (w / 2, 30 + (h - 30) / 2), "No history for today", F("sb", 17), anchor="mm")
+        return c
+    n = min(2, len(evs))
+    ih = (h - 28) / n                         # height of one item
+    for i, e in enumerate(evs[:n]):
+        y = 28 + i * ih
+        text(d, (12, y + 1), str(e["year"]), F("b", 26))
+        avail = int(ih - 33 - (4 if i < n - 1 else 0))
+        for sz in (17, 16, 15, 14):
+            f = F("cm", sz)
+            lh = sz + 3
+            lines = wrap(d, e["text"], f, w - 24, 10)
+            if len(lines) * lh <= avail:
+                break
+        else:
+            lines = wrap(d, e["text"], f, w - 24, max(1, avail // lh))
+        ty = y + 31
+        for ln in lines:
+            text(d, (12, ty), ln, f)
+            ty += lh
+        if i < n - 1:
+            dotted(d, 10, w - 10, int(y + ih - 3), 3)
+    return c
+
+
 def panel_lunch_week(ctx: Ctx, size):
     """The whole right half: five consecutive days, one row each."""
     c, d = canvas(size)
@@ -1113,7 +1149,8 @@ def panel_lunch_week(ctx: Ctx, size):
 
 PANELS = {"weather": panel_weather, "news": panel_news, "sports": panel_sports, "sky": panel_sky,
           "lunch": panel_lunch, "calendar": panel_calendar,
-          "volleyball": panel_volleyball, "countdown": panel_countdown, "verse": panel_verse}
+          "volleyball": panel_volleyball, "countdown": panel_countdown, "verse": panel_verse,
+          "history": panel_history}
 
 
 # ================================================================== chrome

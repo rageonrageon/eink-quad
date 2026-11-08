@@ -33,6 +33,7 @@ from PIL import Image, ImageChops  # noqa: E402
 import logos  # noqa: E402
 import agenda  # noqa: E402
 import countdown  # noqa: E402
+import history  # noqa: E402
 import ical  # noqa: E402
 import lunch  # noqa: E402
 import render as R  # noqa: E402
@@ -57,6 +58,7 @@ DEFAULTS = {
     "city": "Tampa",             # named in the Claude brief's prompt
     "lat": 27.9506, "lon": -82.4572,
     "units": "F",
+    "history_skip_politics": True,   # leave elections and the like out of This Day in History
     "votd_version": "NIV",       # translation for the verse of the day tile
     "layout": "five",            # quad = 2x2 (4 slots), five = 2 on top + 3 across the bottom (5 slots)
     "slots": ["weather", "lunch", "sports", "news", "calendar"],
@@ -271,6 +273,11 @@ class Board:
             except Exception:
                 traceback.print_exc()
             self.snap["agenda"] = sorted(evs, key=lambda o: (o.date, o.time or "00:00", o.title))
+        elif name == "history":
+            try:
+                self.snap["history"] = history.pick(time.time(), 2, cfg.get("history_skip_politics", True))
+            except Exception:
+                traceback.print_exc()
         elif name == "verse":
             self.snap["verse"] = S.votd(cfg.get("votd_version", "NIV"), force)
         elif name == "countdown":
@@ -306,7 +313,7 @@ class Board:
         return R.Ctx(now=now, cfg=cfg, weather=sn.get("weather"), heads=sn.get("heads") or [],
                      quotes=sn.get("quotes") or [], teams=sn.get("teams") or [], featured=sn.get("featured"),
                      recent=sn.get("recent") or [], day_count=sn.get("day_count", 0), nearby=sn.get("nearby") or [],
-                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], countdowns=sn.get("countdowns") or [], verse=sn.get("verse"), volleyball=sn.get("volleyball") or [],
+                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], countdowns=sn.get("countdowns") or [], verse=sn.get("verse"), history=sn.get("history") or [], volleyball=sn.get("volleyball") or [],
                      volleyball_name=sn.get("volleyball_name", ""), volleyball_on=bool(ical.VOLLEYBALL.url()), brief=sn.get("brief", ""),
                      sticky=sticky, indoor_f=t_f, indoor_rh=dv.get("rh"), battery=batt,
                      on_usb=dv.get("mode") == "live", cycle=self.cycle, updated=self.updated or now,
@@ -391,7 +398,7 @@ class Board:
         beat = int(now // iv)
         due = []
         if self.beats.get("main") != beat:
-            due = ["weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "brief"]
+            due = ["weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "brief"]
             self.beats["main"] = beat
             with self.cond:
                 self.cycle += 1
@@ -482,7 +489,7 @@ class Board:
                     return self.redraw("home", major=True)
                 self.note_event("manual refresh")
         if b == 0:
-            for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse"):
+            for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history"):
                 try:
                     self.take(name, force=True)
                 except Exception:
@@ -660,6 +667,7 @@ class H(BaseHTTPRequestHandler):
             "ical": ical.status(),
             "ical_volleyball": ical.VOLLEYBALL.status(),
             "verse": S.votd_status(cfg.get("votd_version", "NIV")),
+            "history": history.status(),
         }
         st["feeds"] = {k: v[0] for k, v in S.WSJ_FEEDS.items()}
         st["votd_versions"] = S.VOTD_VERSIONS
@@ -705,7 +713,7 @@ class H(BaseHTTPRequestHandler):
         if moved:
             start_sky()
         # data-shaping changes need a refetch; purely visual ones just a redraw
-        for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse"):
+        for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history"):
             try:
                 board.take(name, force=name in ("weather",) and moved)
             except Exception:
@@ -805,7 +813,7 @@ class Server(ThreadingHTTPServer):
 
 
 def warm():
-    for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse"):
+    for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history"):
         try:
             board.take(name)
         except Exception:

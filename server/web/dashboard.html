@@ -172,6 +172,13 @@ td:first-child{font-weight:600;white-space:nowrap}
     </section>
 
     <section class="card">
+      <h2>This day in history</h2>
+      <label class="inline"><input type="checkbox" name="history_skip_politics"> Skip political events (elections, governments)</label>
+      <p class="note">Two events from Wikipedia's "On this day", chosen to suit a family and changed every few hours. Anything violent or disturbing is always left out. Pick the tile in Layout.</p>
+      <p class="note" id="historyStatus"></p>
+    </section>
+
+    <section class="card">
       <h2>Verse of the day</h2>
       <label>Translation<select name="votd_version" id="votdSel"></select></label>
       <p class="note">Daily verse from Bible Gateway, for the Verse tile. Pick the tile in Layout.</p>
@@ -402,6 +409,9 @@ function render() {
   document.getElementById('icalStatus').textContent = !ic.configured ? 'Google Calendar: not connected (set QUAD_ICAL_URL on the server).'
     : ic.error ? 'Google Calendar: sync problem, showing the last good copy. ' + ic.error
     : ic.age_s == null ? 'Google Calendar: connecting…' : `Google Calendar: ${ic.count} upcoming events, synced ${ago(ic.age_s)}.`;
+  const hs_ = S.sources.history || {};
+  document.getElementById('historyStatus').textContent = hs_.error ? 'History: problem fetching, showing the last copy. ' + hs_.error
+    : hs_.age_s == null ? 'History: not fetched yet.' : `History: updated ${ago(hs_.age_s)}.`;
   const vs_ = S.sources.verse || {};
   document.getElementById('votdStatus').textContent = vs_.age_s == null ? (vs_.error ? 'Verse: failing. ' + vs_.error : 'Verse: not fetched yet.')
     : vs_.source === 'Bible Gateway' ? `Verse: Bible Gateway, updated ${ago(vs_.age_s)}.`
