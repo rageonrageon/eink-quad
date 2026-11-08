@@ -36,6 +36,7 @@ import countdown  # noqa: E402
 import history  # noqa: E402
 import ical  # noqa: E402
 import lunch  # noqa: E402
+import netcheck  # noqa: E402
 import render as R  # noqa: E402
 import skyevents  # noqa: E402
 import sources as S  # noqa: E402
@@ -677,6 +678,7 @@ class H(BaseHTTPRequestHandler):
         st["feeds"] = {k: v[0] for k, v in S.WSJ_FEEDS.items()}
         st["votd_versions"] = S.VOTD_VERSIONS
         st["llm_providers"] = S.LLM_PROVIDERS
+        st["netcheck"] = netcheck.snapshot()
         try:
             st["bar"] = R.strip_source(board.ctx())
         except Exception:
@@ -746,6 +748,9 @@ class H(BaseHTTPRequestHandler):
 
     def action(self, body):
         a = body.get("action")
+        if a == "netcheck":
+            netcheck.run_async()
+            return {"ok": True}
         if a == "refresh":
             with board.cond:
                 board.note = None
@@ -837,6 +842,7 @@ class Server(ThreadingHTTPServer):
 
 
 def warm():
+    netcheck.run_async()          # which sites will this server be allowed to reach? (Health panel)
     for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history"):
         try:
             board.take(name)

@@ -121,6 +121,8 @@ td:first-child{font-weight:600;white-space:nowrap}
     <section class="card">
       <h2>Health</h2>
       <table id="health"></table>
+      <button type="button" class="ghost" style="margin-top:10px" onclick="act({action:'netcheck'})">Run connectivity test</button>
+      <p class="note" style="margin-bottom:0">Tries a few websites from the server itself, to see which ones refuse it. Results appear in the table above.</p>
       <h2 style="margin-top:16px">Recent activity</h2>
       <div class="log" id="log"></div>
     </section>
@@ -461,6 +463,14 @@ function render() {
     : bl.ok ? `last attempt ok · ${bAgo}${bl.detail ? ' · ' + esc(bl.detail) : ''}`
     : `<span style="color:var(--bad)">last attempt failed ${bAgo}: ${esc(bl.detail)}</span>`]);
   rows.push(['Top bar is showing', esc(S.bar || '—')]);
+  const nc = S.netcheck || {results: []};
+  if (nc.running) rows.push(['Connectivity test', 'running…']);
+  for (const r of nc.results) {
+    rows.push(['Reach: ' + esc(r.label),
+      r.ok ? `<span style="color:var(--ok)">reachable</span> · ${r.ms} ms · ${esc(r.detail)}`
+           : `<span style="color:var(--bad)">blocked or failing</span> · ${esc(r.detail)}`]);
+  }
+  if (nc.results.length) rows.push(['Connectivity test ran', ago(Math.round(Date.now() / 1000 - nc.at))]);
   if (src.events && src.events.upcoming && src.events.upcoming.length)
     rows.push(['Next sky event', src.events.upcoming.map(e => `${e.title} in ${Math.round(e.in_s/3600)}h (${e.confidence})`).join('<br>')]);
   rows.push(['Render', `${S.render_ms} ms · cycle ${S.cycle}`], ['Device', `${d.polls} polls · ${d.boots} boots · on v${d.version}`]);
