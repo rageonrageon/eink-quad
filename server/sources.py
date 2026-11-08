@@ -738,6 +738,38 @@ def sports_status():
 
 # ============================================================ LLM brief
 
+# ============================================================ verse of the day
+
+VOTD_VERSIONS = {"NIV": "NIV", "NIRV": "NIrV (easier to read)", "ESV": "ESV", "NLT": "NLT", "CSB": "CSB",
+                 "NKJV": "NKJV", "KJV": "KJV", "NASB": "NASB", "WEB": "WEB (public domain)", "MSG": "The Message",
+                 "AMP": "Amplified", "ICB": "ICB (easy reading)"}
+_votd: dict[str, Cached] = {}
+
+
+def votd(version="NIV", force=False):
+    """Bible Gateway's verse of the day in the chosen translation:
+    {"text", "ref", "version", "day"}, or None if it has never been fetched. The verse
+    changes once a day; an hour's cache is plenty, and a failed fetch keeps the last one."""
+    version = version if version in VOTD_VERSIONS else "NIV"
+    c = _votd.setdefault(version, Cached(3600))
+
+    def fetch():
+        r = requests.get("https://www.biblegateway.com/votd/get/", params={"format": "json", "version": version},
+                         headers={"User-Agent": UA_BOT}, timeout=10)
+        r.raise_for_status()
+        v = r.json()["votd"]
+        txt = html.unescape(v.get("rawtext") or re.sub(r"<[^>]+>", "", v.get("text", "")))
+        txt = re.sub(r"\s+", " ", txt).strip().strip("\u201c\u201d\"").strip()
+        return {"text": txt, "ref": v.get("display_ref") or v.get("reference", ""),
+                "version": v.get("version_id") or version, "day": f'{v.get("year")}-{v.get("month")}-{v.get("day")}'}
+    fetch.__name__ = f"votd_{version}"
+    return c.get(fetch, force)
+
+
+def votd_status():
+    return {k: c.status() for k, c in _votd.items()}
+
+
 _brief = Cached(3600)
 
 

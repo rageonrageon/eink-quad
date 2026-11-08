@@ -28,6 +28,8 @@ class Occurrence:
     time: str          # "" for all-day, else "HH:MM"
     title: str
     repeat: str = ""
+    place: str = ""      # venue, for feeds that carry a location
+    kind: str = ""       # game | tournament | practice | "" (guessed from the title)
 
     @property
     def clock(self) -> str:

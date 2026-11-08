@@ -32,6 +32,7 @@ from PIL import Image, ImageChops  # noqa: E402
 
 import logos  # noqa: E402
 import agenda  # noqa: E402
+import countdown  # noqa: E402
 import ical  # noqa: E402
 import lunch  # noqa: E402
 import render as R  # noqa: E402
@@ -56,6 +57,7 @@ DEFAULTS = {
     "city": "Tampa",             # named in the Claude brief's prompt
     "lat": 27.9506, "lon": -82.4572,
     "units": "F",
+    "votd_version": "NIV",       # translation for the verse of the day tile
     "layout": "five",            # quad = 2x2 (4 slots), five = 2 on top + 3 across the bottom (5 slots)
     "slots": ["weather", "lunch", "sports", "news", "calendar"],
     "interval_min": 10,          # the main cadence: every panel refreshes on this beat
@@ -113,6 +115,7 @@ def save_json(path, obj):
     os.replace(tmp, path)
 
 
+countdown.PATH = os.environ.get("QUAD_COUNTDOWNS") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "countdowns.json")
 agenda.PATH = os.environ.get("QUAD_AGENDA") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "agenda.json")
 cfg = {**DEFAULTS, **load_json(CONFIG_PATH, {})}
 # settings saved before the layout existed may carry too few slots: pad from the defaults
@@ -268,6 +271,18 @@ class Board:
             except Exception:
                 traceback.print_exc()
             self.snap["agenda"] = sorted(evs, key=lambda o: (o.date, o.time or "00:00", o.title))
+        elif name == "verse":
+            self.snap["verse"] = S.votd(cfg.get("votd_version", "NIV"), force)
+        elif name == "countdown":
+            import datetime as _dt
+            self.snap["countdowns"] = countdown.upcoming(_dt.date.today())
+        elif name == "volleyball":
+            now = time.time()
+            try:
+                self.snap["volleyball"] = ical.VOLLEYBALL.upcoming(now)
+            except Exception:
+                traceback.print_exc()
+            self.snap["volleyball_name"] = ical.VOLLEYBALL.name
         elif name == "lunch":
             self.snap["lunch"] = lunch.upcoming(time.time(), n=5)
         elif name == "brief":
@@ -291,7 +306,8 @@ class Board:
         return R.Ctx(now=now, cfg=cfg, weather=sn.get("weather"), heads=sn.get("heads") or [],
                      quotes=sn.get("quotes") or [], teams=sn.get("teams") or [], featured=sn.get("featured"),
                      recent=sn.get("recent") or [], day_count=sn.get("day_count", 0), nearby=sn.get("nearby") or [],
-                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], brief=sn.get("brief", ""),
+                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], countdowns=sn.get("countdowns") or [], verse=sn.get("verse"), volleyball=sn.get("volleyball") or [],
+                     volleyball_name=sn.get("volleyball_name", ""), volleyball_on=bool(ical.VOLLEYBALL.url()), brief=sn.get("brief", ""),
                      sticky=sticky, indoor_f=t_f, indoor_rh=dv.get("rh"), battery=batt,
                      on_usb=dv.get("mode") == "live", cycle=self.cycle, updated=self.updated or now,
                      page=page or self.page)
@@ -375,7 +391,7 @@ class Board:
         beat = int(now // iv)
         due = []
         if self.beats.get("main") != beat:
-            due = ["weather", "news", "sports", "sky", "lunch", "calendar", "brief"]
+            due = ["weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "brief"]
             self.beats["main"] = beat
             with self.cond:
                 self.cycle += 1
@@ -466,7 +482,7 @@ class Board:
                     return self.redraw("home", major=True)
                 self.note_event("manual refresh")
         if b == 0:
-            for name in ("weather", "news", "sports", "sky", "lunch", "calendar"):
+            for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse"):
                 try:
                     self.take(name, force=True)
                 except Exception:
@@ -566,6 +582,8 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, self.state())
             if p == "/api/agenda":
                 return self.send(200, {"events": agenda.listing()})
+            if p == "/api/countdowns":
+                return self.send(200, countdown.settings())
             if p == "/api/teams":
                 return self.send(200, {k: v[0] for k, v in S.TEAMS.items()})
             return self.send(404, {"error": "not found"})
@@ -586,6 +604,18 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, self.set_config(body))
             if p == "/api/action":
                 return self.send(200, self.action(body))
+            if p == "/api/countdowns":
+                op = body.get("op")
+                if op == "holidays":
+                    countdown.set_holidays([str(k) for k in body.get("holidays", [])])
+                elif op == "delete":
+                    countdown.delete(str(body.get("id", "")))
+                else:
+                    countdown.add(body.get("name", ""), body.get("date", ""), body.get("end", ""), bool(body.get("yearly")))
+                board.take("countdown")
+                with board.cond:
+                    board.redraw("countdown changed")
+                return self.send(200, countdown.settings())
             if p == "/api/agenda":
                 if body.get("op") == "delete":
                     agenda.delete(str(body.get("id", "")))
@@ -628,8 +658,10 @@ class H(BaseHTTPRequestHandler):
                     "error": sky.last_error if sky else None},
             "events": events.status if events else None,
             "ical": ical.status(),
+            "ical_volleyball": ical.VOLLEYBALL.status(),
         }
         st["feeds"] = {k: v[0] for k, v in S.WSJ_FEEDS.items()}
+        st["votd_versions"] = S.VOTD_VERSIONS
         st["teams"] = {k: v[0] for k, v in S.TEAMS.items()}
         st["panels"] = list(R.PANELS)
         st["notes_available"] = bool(nb is not None and notes_db() is not None)
@@ -672,7 +704,7 @@ class H(BaseHTTPRequestHandler):
         if moved:
             start_sky()
         # data-shaping changes need a refetch; purely visual ones just a redraw
-        for name in ("weather", "news", "sports", "sky", "lunch", "calendar"):
+        for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse"):
             try:
                 board.take(name, force=name in ("weather",) and moved)
             except Exception:
@@ -772,7 +804,7 @@ class Server(ThreadingHTTPServer):
 
 
 def warm():
-    for name in ("weather", "news", "sports", "sky", "lunch", "calendar"):
+    for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse"):
         try:
             board.take(name)
         except Exception:

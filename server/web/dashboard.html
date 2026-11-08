@@ -93,7 +93,29 @@ td:first-child{font-weight:600;white-space:nowrap}
         <button type="button" onclick="addEvent()">Add event</button>
       </div>
       <p class="note" id="icalStatus"></p>
+      <p class="note" id="vbStatus"></p>
       <p class="note">Shows in the Calendar panel, soonest first. A time is optional. Past one-off events drop off on their own.</p>
+    </section>
+
+    <section class="card">
+      <h2>Countdowns</h2>
+      <p class="note" style="margin-top:0">Holidays to count down to (changes apply right away):</p>
+      <div class="checks" id="holidayChecks"></div>
+      <h2 style="margin-top:16px">Your own</h2>
+      <div id="cdList"></div>
+      <div class="row" style="margin-top:10px">
+        <input id="cdName" maxlength="40" placeholder="e.g. Spring break" style="flex:1;min-width:150px">
+      </div>
+      <div class="row">
+        <label class="inline">Starts <input type="date" id="cdDate" style="width:auto"></label>
+        <label class="inline">Ends (optional) <input type="date" id="cdEnd" style="width:auto"></label>
+      </div>
+      <div class="row">
+        <label class="inline"><input type="checkbox" id="cdYearly"> Repeats every year (birthdays)</label>
+        <span style="flex:1"></span>
+        <button type="button" onclick="addCountdown()">Add</button>
+      </div>
+      <p class="note">For a break, set both dates: it counts down to the start, then to the last day. Past one-time countdowns disappear on their own.</p>
     </section>
 
     <section class="card">
@@ -147,6 +169,12 @@ td:first-child{font-weight:600;white-space:nowrap}
         <label>Longitude<input name="lon" type="number" step="0.0001"></label>
       </div>
       <p class="note">Location also moves the plane radar and ISS/launch visibility.</p>
+    </section>
+
+    <section class="card">
+      <h2>Verse of the day</h2>
+      <label>Translation<select name="votd_version" id="votdSel"></select></label>
+      <p class="note">Daily verse from Bible Gateway, for the Verse tile. Pick the tile in Layout.</p>
     </section>
 
     <section class="card">
@@ -242,6 +270,37 @@ function renderAgenda(events) {
     row.append(label, del); box.appendChild(row);
   }
 }
+async function cdCall(body) {
+  const r = await fetch(api('/api/countdowns'), {method: body ? 'POST' : 'GET', body: body ? JSON.stringify(body) : undefined});
+  const j = await r.json(); if (j.error) { alert(j.error); return; }
+  renderCountdowns(j);
+}
+function renderCountdowns(j) {
+  const box = document.getElementById('holidayChecks');
+  if (!box.children.length) for (const [k, lab] of Object.entries(j.all_holidays)) {      // built once, so quick clicks never get redrawn away
+    const l = document.createElement('label'); l.className = 'inline';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = k; cb.checked = j.holidays.includes(k);
+    cb.onchange = () => cdCall({op: 'holidays', holidays: [...box.querySelectorAll('input:checked')].map(e => e.value)});
+    l.append(cb, ' ' + lab); box.appendChild(l);
+  }
+  const list = document.getElementById('cdList'); list.innerHTML = '';
+  if (!j.items.length) { list.innerHTML = '<p class="note">None yet. Add school breaks, trips, birthdays below.</p>'; return; }
+  const fmt = (s) => new Date(s + 'T12:00:00').toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'});
+  for (const i of j.items) {
+    const row = document.createElement('div'); row.className = 'row'; row.style.margin = '4px 0';
+    const label = document.createElement('span'); label.style.flex = '1';
+    label.textContent = `${i.name} · ${fmt(i.date)}${i.end ? ' to ' + fmt(i.end) : ''}${i.yearly ? ' (every year)' : ''}`;
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'ghost'; del.textContent = 'Delete';
+    del.onclick = () => { if (confirm('Delete "' + i.name + '"?')) cdCall({op: 'delete', id: i.id}); };
+    row.append(label, del); list.appendChild(row);
+  }
+}
+async function addCountdown() {
+  const name = document.getElementById('cdName');
+  await cdCall({op: 'add', name: name.value, date: document.getElementById('cdDate').value,
+                end: document.getElementById('cdEnd').value, yearly: document.getElementById('cdYearly').checked});
+  name.value = ''; document.getElementById('cdEnd').value = '';
+}
 function hm12(t) { const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; }
 async function addEvent() {
   const title = document.getElementById('agTitle');
@@ -280,6 +339,8 @@ document.addEventListener('change', (e) => {
 
 function fillForm(cfg) {
   const f = document.getElementById('form');
+  const vs = document.getElementById('votdSel');
+  if (!vs.options.length) for (const [k, lab] of Object.entries(S.votd_versions || {})) vs.add(new Option(lab, k));
   for (const el of f.elements) {
     if (!el.name || !(el.name in cfg)) continue;
     const v = cfg[el.name];
@@ -340,6 +401,10 @@ function render() {
   document.getElementById('icalStatus').textContent = !ic.configured ? 'Google Calendar: not connected (set QUAD_ICAL_URL on the server).'
     : ic.error ? 'Google Calendar: sync problem, showing the last good copy. ' + ic.error
     : ic.age_s == null ? 'Google Calendar: connecting…' : `Google Calendar: ${ic.count} upcoming events, synced ${ago(ic.age_s)}.`;
+  const vb = S.sources.ical_volleyball || {};
+  document.getElementById('vbStatus').textContent = !vb.configured ? 'Volleyball feed: not connected (set QUAD_ICAL_URL_VOLLEYBALL on the server).'
+    : vb.error ? 'Volleyball feed: sync problem, showing the last good copy. ' + vb.error
+    : vb.age_s == null ? 'Volleyball feed: connecting…' : `Volleyball feed${vb.name ? ' (' + vb.name + ')' : ''}: ${vb.count} upcoming events, synced ${ago(vb.age_s)}.`;
   document.getElementById('hdr').textContent = `v${S.version} · ${S.cfg.label}`;
   document.getElementById('briefText').textContent = S.sources.brief.text || (S.cfg.llm_brief ? 'No brief yet' : 'Brief is off');
   if (!document.activeElement || document.activeElement.id !== 'stickyText') document.getElementById('stickyText').value = S.sticky || '';
@@ -365,7 +430,7 @@ async function poll() {
     const first = !S;
     S = await r.json();
     if (first || !dirty) fillForm(S.cfg);
-    if (first) { agendaCall(); const t = new Date(); document.getElementById('agDate').value = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
+    if (first) { agendaCall(); cdCall(); const t = new Date(); document.getElementById('agDate').value = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
     if (S.version !== lastV) { lastV = S.version; document.getElementById('screen').src = api(`/api/screen.png?v=${S.version}`); }
     render();
   } catch (e) { document.getElementById('hdr').textContent = 'offline'; }

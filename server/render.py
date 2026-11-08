@@ -349,6 +349,11 @@ class Ctx:
     lunch_week: list = field(default_factory=list)   # 5 consecutive days from today
     activities: dict = field(default_factory=dict)   # {date: [("8:00 AM", "Volleyball practice"), ...]}
     agenda: list = field(default_factory=list)       # agenda.Occurrence rows for the calendar panel
+    volleyball: list = field(default_factory=list)   # agenda.Occurrence rows from the volleyball feed
+    volleyball_name: str = ""                        # the team calendar's own name, e.g. "Power 14 - 2027"
+    volleyball_on: bool = False                      # is a volleyball feed configured at all
+    countdowns: list = field(default_factory=list)   # countdown.Item rows, soonest first
+    verse: dict | None = None                        # {"text", "ref", "version"} from sources.votd
 
 
 def _deg(v):
@@ -947,6 +952,117 @@ def panel_calendar(ctx: Ctx, size):
     return c
 
 
+def panel_volleyball(ctx: Ctx, size):
+    """The team's next games and practices: a date/time line (GAME badge for games), the
+    title, then the venue. Falls back to a plain message when nothing is scheduled."""
+    import datetime as _dt
+    c, d = canvas(size)
+    w, h = size
+    name = ctx.volleyball_name.split(" - ")[0] if ctx.volleyball_name else ""
+    text(d, (12, 3), "VOLLEYBALL", F("cb", 18))
+    if name:
+        text(d, (w - 12, 5), ellipsize(d, name, F("cm", 15), w - 130), F("cm", 15), anchor="ra")
+    d.line((10, 25, w - 10, 25), fill=INK, width=2)
+    evs = ctx.volleyball
+    if not evs:
+        msg = "No volleyball scheduled" if ctx.volleyball_on else "Volleyball not connected"
+        sub = "Games and practices appear here" if ctx.volleyball_on else "Set the feed link on the server"
+        text(d, (w / 2, 30 + (h - 30) / 2 - 8), msg, F("sb", 18), anchor="mm")
+        text(d, (w / 2, 30 + (h - 30) / 2 + 14), sub, F("m", 14), anchor="mm")
+        return c
+    tm = time.localtime(ctx.now)
+    t0 = _dt.date(tm.tm_year, tm.tm_mon, tm.tm_mday)
+    rh = 59
+    rows = max(1, int((h - 28) // rh))
+    y = 28
+    for i, e in enumerate(evs[:rows]):
+        delta = (e.date - t0).days
+        when = ("Today · " if delta == 0 else "Tomorrow · " if delta == 1 else "") + f"{e.date:%a %b} {e.date.day}"
+        if e.time:
+            when += " · " + e.clock
+        x = 12
+        if e.kind in ("game", "tournament"):
+            x = pill(d, 12, y + 1, "GAME" if e.kind == "game" else "TOURNEY", F("cb", 14), pad=5, h=18) + 7
+        fh = fit_font(d, when, "csb", w - 12 - x, [16, 15, 14])
+        text(d, (x, y + 10), ellipsize(d, when, fh, w - 12 - x), fh, anchor="lm")
+        ft = fit_font(d, e.title, "sb", w - 24, [18, 17, 16, 15])
+        text(d, (12, y + 18), ellipsize(d, e.title, ft, w - 24), ft)
+        if e.place:
+            text(d, (12, y + 38), ellipsize(d, e.place, F("m", 14), w - 24), F("m", 14))
+        y += rh
+        if i < rows - 1 and i < len(evs) - 1:
+            dotted(d, 10, w - 10, int(y - 2), 3)
+    return c
+
+
+def panel_countdown(ctx: Ctx, size):
+    """Days until: a big number, the name, and the date. A break that is on shows days left."""
+    c, d = canvas(size)
+    w, h = size
+    text(d, (12, 3), "COUNTDOWN", F("cb", 18))
+    d.line((10, 25, w - 10, 25), fill=INK, width=2)
+    items = ctx.countdowns
+    if not items:
+        text(d, (w / 2, 30 + (h - 30) / 2 - 8), "Nothing to count down to", F("sb", 18), anchor="mm")
+        text(d, (w / 2, 30 + (h - 30) / 2 + 14), "Pick holidays on the settings page", F("m", 14), anchor="mm")
+        return c
+    rh = 44
+    rows = max(1, int((h - 28) // rh))
+    y = 28
+    for i, it in enumerate(items[:rows]):
+        last_day = it.state == "now" and it.number == 0
+        if it.state == "today" or last_day:
+            pill(d, 8, y + 9, "LAST DAY" if last_day else "TODAY", F("cb", 14 if last_day else 18), pad=6, h=26)
+        else:
+            text(d, (60, y + 1), str(it.number), F("b", 30), anchor="ra")
+            text(d, (60, y + 29), "day" if it.number == 1 else "days", F("cm", 13), anchor="ra")
+        fn = fit_font(d, it.name, "sb", w - 86, [19, 18, 17, 16])
+        text(d, (74, y + 5), ellipsize(d, it.name, fn, w - 86), fn)
+        dm = lambda x: f"{x:%b} {x.day}"
+        if it.state == "now":
+            sub = f"Now · ends {it.end:%a} {dm(it.end)}"
+        elif it.end and it.end != it.date:
+            sub = f"{dm(it.date)} – {dm(it.end)}"
+        else:
+            sub = f"{it.date:%a} {dm(it.date)}"
+        text(d, (74, y + 26), ellipsize(d, sub, F("cm", 14), w - 86), F("cm", 14))
+        y += rh
+        if i < rows - 1 and i < len(items) - 1:
+            dotted(d, 10, w - 10, int(y - 1), 3)
+    return c
+
+
+def panel_verse(ctx: Ctx, size):
+    """Verse of the day. The text takes the biggest size that fits and is cut with an
+    ellipsis only if even the smallest does not."""
+    c, d = canvas(size)
+    w, h = size
+    text(d, (12, 3), "VERSE OF THE DAY", F("cb", 18))
+    d.line((10, 25, w - 10, 25), fill=INK, width=2)
+    v = ctx.verse
+    if not v or not v.get("text"):
+        text(d, (w / 2, 30 + (h - 30) / 2), "Verse unavailable right now", F("sb", 17), anchor="mm")
+        return c
+    ref = f'{v["ref"]} · {v["version"]}'
+    ry = h - 24
+    text(d, (w - 12, ry + 2), ellipsize(d, ref, F("cb", 17), w - 24), F("cb", 17), anchor="ra")
+    body = "\u201c" + v["text"] + "\u201d"
+    top, avail = 32, ry - 34
+    for sz in (22, 20, 19, 18, 17, 16, 15, 14):
+        f = F("cm", sz)
+        lh = sz + 3
+        lines = wrap(d, body, f, w - 24, 40)
+        if len(lines) * lh <= avail:
+            break
+    else:
+        lines = wrap(d, body, f, w - 24, max(1, int(avail // lh)))
+    y = top + max(0, (avail - len(lines) * lh) // 2) if len(lines) * lh < avail * 0.6 else top
+    for ln in lines:
+        text(d, (12, y), ln, f)
+        y += lh
+    return c
+
+
 def panel_lunch_week(ctx: Ctx, size):
     """The whole right half: five consecutive days, one row each."""
     c, d = canvas(size)
@@ -997,7 +1113,8 @@ def panel_lunch_week(ctx: Ctx, size):
 
 
 PANELS = {"weather": panel_weather, "news": panel_news, "sports": panel_sports, "sky": panel_sky,
-          "lunch": panel_lunch, "calendar": panel_calendar}
+          "lunch": panel_lunch, "calendar": panel_calendar,
+          "volleyball": panel_volleyball, "countdown": panel_countdown, "verse": panel_verse}
 
 
 # ================================================================== chrome
