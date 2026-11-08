@@ -146,6 +146,13 @@ td:first-child{font-weight:600;white-space:nowrap}
     </section>
 
     <section class="card">
+      <h2>SMART tile</h2>
+      <p class="note" style="margin-top:0">Put <b>SMART (rotates)</b> in any slot above. It shows one of the three tiles below and moves to the next each time the board updates, so everything else can stay put. Only tiles that are not already on the board can be chosen.</p>
+      <div class="slots" id="smartSel"></div>
+      <p class="note" id="smartNote"></p>
+    </section>
+
+    <section class="card">
       <h2>Timing</h2>
       <div class="grid3">
         <label>Update every (min)<input type="number" name="interval_min" min="1" max="120"></label>
@@ -266,7 +273,8 @@ const api = (p) => `${base}${p}${p.includes('?') ? '&' : '?'}k=${encodeURICompon
 let S = null, lastV = -1, dirty = false;
 const PAGE_NAMES = {quad:'Quad', weather:'Weather', news:'News', sports:'Sports', lunch:'Lunch'};
 const PANEL_LABELS = {weather:'Weather', news:'News & markets', sports:'Sports', sky:'Sky (planes)', lunch:'School lunch', calendar:'Calendar',
-  volleyball:'Volleyball', countdown:'Countdown', verse:'Verse of the day', history:'This day in history', hearings:'Hearing Calendar'};
+  volleyball:'Volleyball', countdown:'Countdown', verse:'Verse of the day', history:'This day in history', hearings:'Hearing Calendar',
+  smart:'SMART (rotates)'};
 
 async function act(body) {
   const r = await fetch(api('/api/action'), {method:'POST', body: JSON.stringify(body)});
@@ -356,10 +364,30 @@ function buildSlots(current, layout) {
     slots.appendChild(s);
   });
 }
+function smartValues() { return [...document.querySelectorAll('#smartSel select')].map(s => s.value); }
+function buildSmart(chosen) {
+  // three pickers; each offers "(none)" and every tile that is not in one of the board's slots (SMART itself excluded)
+  const box = document.getElementById('smartSel'); box.innerHTML = '';
+  const used = [...document.querySelectorAll('#slots select')].map(s => s.value);
+  const free = S.panels.filter(p => p !== 'smart' && !used.includes(p));
+  for (let i = 0; i < 3; i++) {
+    const s = document.createElement('select'); s.title = 'SMART tile, choice ' + (i + 1);
+    s.add(new Option(`Rotation ${i + 1}: (none)`, ''));
+    for (const p of free) s.add(new Option(`Rotation ${i + 1}: ${PANEL_LABELS[p] || p}`, p));
+    const v = chosen[i] || '';
+    if (v && !free.includes(v)) s.add(new Option(`Rotation ${i + 1}: ${PANEL_LABELS[v] || v} (already on the board, skipped)`, v));
+    s.value = v; s.onchange = () => { dirty = true; };
+    box.appendChild(s);
+  }
+  const onBoard = used.includes('smart');
+  document.getElementById('smartNote').textContent = onBoard ? '' : 'SMART is not in any slot yet, so nothing rotates. Pick it in a slot above.';
+}
 document.addEventListener('change', (e) => {
+  if (e.target.closest && e.target.closest('#slots')) buildSmart(smartValues());        // a slot changed: its tile is no longer on offer
   if (e.target.id !== 'layoutSel') return;
   const cur = [...document.querySelectorAll('#slots select')].map(s => s.value);
   buildSlots(cur, e.target.value);
+  buildSmart(smartValues());
 });
 
 function fillForm(cfg) {
@@ -383,6 +411,7 @@ function fillForm(cfg) {
     else el.value = Array.isArray(v) ? v.join(', ') : v;
   }
   buildSlots(cfg.slots, cfg.layout);
+  buildSmart(cfg.smart_tiles || []);
   const mk = (id, map, chosen, name) => {
     const box = document.getElementById(id); box.innerHTML = '';
     for (const [k, lab] of Object.entries(map)) {
@@ -403,6 +432,7 @@ function collect() {
   }
   out.tickers = out.tickers.split(',').map(s => s.trim()).filter(Boolean);
   out.slots = [...document.querySelectorAll('#slots select')].map(s => s.value);
+  out.smart_tiles = smartValues().filter(Boolean);
   for (const name of ['feeds', 'teams'])
     out[name] = [...document.querySelectorAll(`input[data-list=${name}]:checked`)].map(e => e.value);
   return out;
@@ -491,6 +521,9 @@ function render() {
     : bl.ok ? `last attempt ok · ${bAgo}${bl.detail ? ' · ' + esc(bl.detail) : ''}`
     : `<span style="color:var(--bad)">last attempt failed ${bAgo}: ${esc(bl.detail)}</span>`]);
   rows.push(['Top bar is showing', esc(S.bar || '—')]);
+  const sm = S.smart || {};
+  rows.push(['SMART tile', !sm.on_board ? 'not on the board' : !sm.names.length ? 'on the board, but no tiles chosen'
+    : `showing ${esc(PANEL_LABELS[sm.showing] || sm.showing)} (rotating through ${sm.names.map(n => esc(PANEL_LABELS[n] || n)).join(', ')})`]);
   const hc = S.hearings || {};
   rows.push(['Hearing calendar', hc.loaded ? `${hc.future} upcoming hearing days loaded${hc.next ? '; next: ' + esc(hc.next) : ''}`
     : 'no schedule loaded yet (send one with tools/import_hearings.py)']);

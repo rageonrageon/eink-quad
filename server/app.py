@@ -66,6 +66,7 @@ DEFAULTS = {
     "history_skip_politics": True,   # leave elections and the like out of This Day in History
     "votd_version": "NIV",       # translation for the verse of the day tile
     "votd_choices": ["NLT", "NIV", "AMP"],   # the translations offered (the ones added in the API.Bible account)
+    "smart_tiles": [],           # up to three panels the SMART tile rotates through (see render.panel_smart)
     "layout": "five",            # quad = 2x2 (4 slots), five = 2 on top + 3 across the bottom (5 slots)
     "slots": ["weather", "lunch", "sports", "news", "calendar"],
     "interval_min": 10,          # the main cadence: every panel refreshes on this beat
@@ -227,6 +228,8 @@ class Board:
         st = load_json(STATE_PATH, {})
         self.version = st.get("version", 1)
         self.cycle = st.get("cycle", 0)
+        self.smart_step = 0          # which of the SMART tile's panels is up; moves once per update the tablet gets
+        self.smart_adv = 0.0         # when it last moved on a sleeping tablet's wake-up
         self.sticky = st.get("sticky", "")
         self.sticky_until = st.get("sticky_until", 0)
         self.page = "quad"
@@ -336,7 +339,7 @@ class Board:
                      event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], countdowns=sn.get("countdowns") or [], verse=sn.get("verse"), history=sn.get("history") or [], hearings=sn.get("hearings") or [], volleyball=sn.get("volleyball") or [],
                      volleyball_name=sn.get("volleyball_name", ""), volleyball_on=bool(ical.VOLLEYBALL.url()), brief=sn.get("brief", ""),
                      sticky=sticky, indoor_f=t_f, indoor_rh=dv.get("rh"), battery=batt,
-                     on_usb=dv.get("mode") == "live", cycle=self.cycle, updated=self.updated or now,
+                     on_usb=dv.get("mode") == "live", cycle=self.cycle, smart_step=self.smart_step, updated=self.updated or now,
                      page=page or self.page)
 
     # -- commit (call with cond held)
@@ -423,6 +426,8 @@ class Board:
             self.beats["main"] = beat
             with self.cond:
                 self.cycle += 1
+                if self.device.get("mode") != "sleep":       # a sleeping tablet moves it on at each wake-up instead
+                    self.smart_step += 1
         else:
             sb = int(now // (max(1, cfg["sky_min"]) * 60))
             ev = events.next_event() if events else None
@@ -447,6 +452,20 @@ class Board:
                 traceback.print_exc()
         with self.cond:
             self.redraw("scheduled " + ",".join(due), major="weather" in due)
+
+    # -- the SMART tile
+    def smart_wake(self):
+        """A sleeping tablet just woke: this is its next update, so move the SMART tile on. The tablet can
+        ask twice in one wake-up, so it moves at most once per half a sleep interval."""
+        if "smart" not in R.visible_panels(cfg) or not R.smart_names(cfg):
+            return
+        now = time.time()
+        with self.cond:
+            if now - self.smart_adv < max(300, int(cfg.get("sleep_min", 30)) * 30):
+                return
+            self.smart_adv = now
+            self.smart_step += 1
+            self.redraw("SMART tile moved on")
 
     # -- which weekend games are really on Omaha TV
     def maybe_tv_check(self, force=False):
@@ -737,6 +756,8 @@ class H(BaseHTTPRequestHandler):
         import datetime as _dt
         st["hearings"] = hearings.summary(_dt.date.today())
         st["brief_skips_sports"] = "sports" in R.visible_panels(cfg)
+        _now, _names = R.smart_current(cfg, board.smart_step)
+        st["smart"] = {"on_board": "smart" in R.visible_panels(cfg), "names": _names, "showing": _now}
         st["tv_local"] = {**localtv.summary(), "enabled": bool(cfg.get("tv_check", True)),
                           "busy": bool(getattr(board, "_tv_busy", False))}
         try:
@@ -769,6 +790,7 @@ class H(BaseHTTPRequestHandler):
             else:
                 v = str(v)
             new[k] = v
+        new["smart_tiles"] = [p for p in dict.fromkeys(new["smart_tiles"]) if p in R.PANELS and p != "smart"][:3]
         if new["layout"] not in ("quad", "five"):
             raise ValueError("layout must be quad or five")
         want = 5 if new["layout"] == "five" else 4
@@ -867,6 +889,8 @@ class H(BaseHTTPRequestHandler):
         if btn in ("0", "1", "2"):
             board.note_event(f"button {btn}")
             board.button(int(btn))
+        elif mode == "sleep":
+            board.smart_wake()
         deadline = time.time() + wait
         base = 0
         with board.cond:

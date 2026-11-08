@@ -354,6 +354,7 @@ class Ctx:
     volleyball_on: bool = False                      # is a volleyball feed configured at all
     countdowns: list = field(default_factory=list)   # countdown.Item rows, soonest first
     hearings: list = field(default_factory=list)     # hearings.Day rows: the next hearing days
+    smart_step: int = 0                              # which of the SMART tile's panels is up (see panel_smart)
     verse: dict | None = None                        # {"text", "ref", "version"} from sources.votd
     history: list = field(default_factory=list)      # [{"year", "text"}] from history.pick
 
@@ -1138,6 +1139,38 @@ def panel_hearings(ctx: Ctx, size):
     return c
 
 
+def smart_names(cfg: dict) -> list:
+    """The panels the SMART tile rotates through: up to three it was given, leaving out any that is already
+    showing in another slot (it would only repeat what the board shows) and anything unknown."""
+    n = 5 if cfg.get("layout") == "five" else 4
+    used = set((cfg.get("slots") or [])[:n]) - {"smart"}
+    out = []
+    for name in cfg.get("smart_tiles") or []:
+        if name in PANELS and name != "smart" and name not in used and name not in out:
+            out.append(name)
+    return out[:3]
+
+
+def smart_current(cfg: dict, step: int):
+    names = smart_names(cfg)
+    return (names[step % len(names)] if names else None), names
+
+
+def panel_smart(ctx: Ctx, size):
+    """SMART: one tile that shows a different panel each time the board updates, so the other tiles can
+    stay put while this one brings in extra information. It draws whichever panel is up, at its own size."""
+    name, names = smart_current(ctx.cfg, ctx.smart_step)
+    if name is None:
+        c, d = canvas(size)
+        w, h = size
+        text(d, (12, 3), "SMART", F("cb", 18))
+        d.line((10, 25, w - 10, 25), fill=INK, width=2)
+        text(d, (w / 2, 30 + (h - 30) / 2 - 8), "Nothing chosen yet", F("sb", 18), anchor="mm")
+        text(d, (w / 2, 30 + (h - 30) / 2 + 14), "Pick its tiles in the settings", F("m", 14), anchor="mm")
+        return c
+    return PANELS[name](ctx, size)
+
+
 def panel_lunch_week(ctx: Ctx, size):
     """The whole right half: five consecutive days, one row each."""
     c, d = canvas(size)
@@ -1188,7 +1221,7 @@ def panel_lunch_week(ctx: Ctx, size):
 
 
 PANELS = {"weather": panel_weather, "news": panel_news, "sports": panel_sports, "sky": panel_sky,
-          "lunch": panel_lunch, "calendar": panel_calendar, "hearings": panel_hearings,
+          "lunch": panel_lunch, "calendar": panel_calendar, "hearings": panel_hearings, "smart": panel_smart,
           "volleyball": panel_volleyball, "countdown": panel_countdown, "verse": panel_verse,
           "history": panel_history}
 
