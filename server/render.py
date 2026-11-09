@@ -392,10 +392,22 @@ def panel_weather(ctx: Ctx, size):
     text(d, (tx, y0 - 8), _deg(wx.temp), big)
     today = wx.days[0] if wx.days else None
     cy = y0 + (66 if y0 < 20 else 56)
-    text(d, (14, cy + 6), ellipsize(d, desc, F("sb", 19), 170), F("sb", 19))
-    if not (wx.alerts and wx.rain_note):
-        text(d, (14, cy + 28), f"Feels {_deg(wx.feels)}" + (f"  ·  H {today.hi:.0f}  L {today.lo:.0f}" if today else ""),
-             F("m", 16))
+    # description with "Feels" beside it, then a big HIGH / LOW row in the space under them
+    feels = f"Feels {_deg(wx.feels)}"
+    fdesc, ffeels = F("sb", 19), F("m", 16)
+    if tw(d, desc, fdesc) + 12 + tw(d, feels, ffeels) > 214:          # a long description: a touch smaller
+        fdesc = F("sb", 17)
+    text(d, (14, cy + 6), ellipsize(d, desc, fdesc, 214 - 12 - tw(d, feels, ffeels)), fdesc)
+    text(d, (14 + min(tw(d, desc, fdesc), 214 - 12 - tw(d, feels, ffeels)) + 12, cy + 9), feels, ffeels)
+    if today and not (wx.alerts and wx.rain_note):                     # (an alert banner plus a rain pill leaves no room, as before)
+        sz = 22 if wx.rain_note else 30                                # smaller when the rain pill needs the room under it
+        ry = cy + (26 if wx.rain_note else 28)
+        x = 14
+        for lab, val in (("HIGH", f"{today.hi:.0f}°"), ("LOW", f"{today.lo:.0f}°")):
+            text(d, (x, ry + sz * 0.5), lab, F("cb", 15), anchor="lm")
+            x += tw(d, lab, F("cb", 15)) + 5
+            text(d, (x, ry + sz * 0.5), val, F("b", sz), anchor="lm")
+            x += tw(d, val, F("b", sz)) + 18
 
     # right column of small facts
     rx = 238
