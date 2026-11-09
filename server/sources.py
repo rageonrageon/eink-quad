@@ -951,6 +951,14 @@ def llm_ready(provider):
     return shutil.which("claude") is not None
 
 
+_KID_UNSAFE = re.compile(
+    r"\b(rape[sd]?|raping|rapist|sexual(ly)?|sex (abuse|assault|offen[cs]e|crime|trafficking)|molest\w*|pedophil\w*|"
+    r"child (abuse|porn\w*)|abus(e|ed|ing)|assault(ed|s)?|murder\w*|kill(ed|er|ers|ing|ings)|slain|slay\w*|homicide|"
+    r"manslaughter|shoot(ing|ings|er)|shot dead|stabb\w*|massacre|beheaded|"
+    r"sentenced|convicted|conviction|guilty|verdict|indicted|arrested|charged with|jailed|prison|life in)\b",
+    re.I)
+
+
 def brief(cfg, heads, wx, games, force=False, visible=()) -> str:
     """One line tying the day together, written by the chosen AI. Optional; empty on failure.
     `visible` is the set of panels on the main screen: if the sports panel is already there, the
@@ -963,7 +971,9 @@ def brief(cfg, heads, wx, games, force=False, visible=()) -> str:
     show_sports = "sports" not in set(visible)
 
     def llm_brief():
-        lines = [f"- {h.section}: {h.title}" for h in heads[:12]]
+        # the kitchen display is seen by young children: drop crime/violence stories before the AI sees them
+        ok_heads = [h for h in heads if not _KID_UNSAFE.search(h.title)]
+        lines = [f"- {h.section}: {h.title}" for h in ok_heads[:12]]
         w = ""
         if wx:
             d = wx.days[0]
@@ -1010,6 +1020,9 @@ def brief(cfg, heads, wx, games, force=False, visible=()) -> str:
             f"It is {time.strftime('%A %I:%M %p')}. Using ONLY the facts below, write ONE plain sentence, "
             "max 115 characters, no emoji, no quotes, no preamble. Lead with what matters most today: "
             + lead + team_rules +
+            "Young children read this display, so it must be family friendly: never use a story about rape, sexual "
+            "assault or abuse, murder, killings, shootings, or any accusation, trial, verdict or sentence for a violent "
+            "or sexual crime; choose a different story instead. "
             "Don't restate routine weather unless rain or heat is notable.\n\n"
             f"{w}\n{sports_fact}Headlines:\n" + "\n".join(lines))
         return _ask_llm(prompt, cfg)
