@@ -73,6 +73,7 @@ DEFAULTS = {
     "sky_min": 10,               # plane panel can run faster (partial refresh, no flash)
     "live_fast": True,           # while a team is playing, sports refreshes every live_min
     "live_min": 3,
+    "lunch_switch_hour": 13,     # from this hour (24-hour clock, server time) the lunch tile shows tomorrow first; 24 = never
     "sleep_min": 30,             # on battery: how often the sleeping tablet wakes to check in (minutes)
     "awake_above_v": 4.10,       # stay awake (Wi-Fi on) only above this battery voltage, i.e. while charging
     "full_every_min": 120,       # one flashing full refresh this often, to wipe ghosting
@@ -314,7 +315,7 @@ class Board:
                 traceback.print_exc()
             self.snap["volleyball_name"] = ical.VOLLEYBALL.name
         elif name == "lunch":
-            self.snap["lunch"] = lunch.upcoming(time.time(), n=5)
+            self.snap["lunch"] = lunch.upcoming(time.time(), n=5, cutoff_hour=int(cfg.get("lunch_switch_hour", 13)))
         elif name == "brief":
             try:
                 h = time.localtime().tm_hour

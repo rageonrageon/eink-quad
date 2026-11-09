@@ -65,14 +65,18 @@ def days_from(now: float, n: int = 5, path: str = PATH) -> list:
     return out
 
 
-def upcoming(now: float, n: int = 2, horizon_days: int = 14, path: str = PATH) -> list:
-    """Today (menu or closure) then the next school day(s), up to n rows."""
+def upcoming(now: float, n: int = 2, horizon_days: int = 14, path: str = PATH, cutoff_hour: int = 13) -> list:
+    """The first day worth showing (its menu or a closure), then the next school day(s), up to n rows.
+    Until cutoff_hour (local time) that first day is today; from then on lunch is over, so it is tomorrow
+    (cutoff_hour 24 means never switch)."""
     days = load(path)
-    today = dt.date.fromtimestamp(now)
+    t = dt.datetime.fromtimestamp(now)
+    today = t.date()
+    first = today + dt.timedelta(days=1) if t.hour >= cutoff_hour else today
     rows = []
-    if today in days:
-        rows.append(days[today])
-    for d in sorted(k for k in days if k > today):
+    if first in days:
+        rows.append(days[first])
+    for d in sorted(k for k in days if k > first):
         if len(rows) >= n or (d - today).days > horizon_days:
             break
         if not days[d].closed:
