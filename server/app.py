@@ -460,13 +460,16 @@ class Board:
         ask twice in one wake-up, so it moves at most once per half a sleep interval."""
         if "smart" not in R.visible_panels(cfg) or not R.smart_names(cfg):
             return
+        if quiet_now():             # quiet hours: hold one clean image overnight
+            return
         now = time.time()
         with self.cond:
             if now - self.smart_adv < max(300, int(cfg.get("sleep_min", 30)) * 30):
                 return
             self.smart_adv = now
             self.smart_step += 1
-            self.redraw("SMART tile moved on")
+            # major: the tile's content changes completely, so use a full refresh (a partial leaves the old panel ghosted underneath)
+            self.redraw("SMART tile moved on", major=True)
 
     # -- which weekend games are really on Omaha TV
     def maybe_tv_check(self, force=False):
