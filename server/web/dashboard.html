@@ -98,6 +98,20 @@ td:first-child{font-weight:600;white-space:nowrap}
     </section>
 
     <section class="card">
+      <h2>To-Do List</h2>
+      <div id="todoList"></div>
+      <div class="row" style="margin-top:10px">
+        <input id="tdTitle" maxlength="80" placeholder="e.g. Return library books" style="flex:1;min-width:150px">
+        <label class="inline">Due (optional) <input type="date" id="tdDue" style="width:auto"></label>
+        <button type="button" onclick="addTodo()">Add task</button>
+      </div>
+      <div class="grid2" style="margin-top:10px">
+        <label>Remove tasks after (days, 0 = keep until cleared)<input type="number" id="tdExpire" min="0" max="365" onchange="saveExpire()"></label>
+      </div>
+      <p class="note">Shows in the To-Do List panel in the order added. "Done" takes a task off the screen; it stays here, greyed out, until you press Clear done. With a number of days set, a task falls off that many days after it was added.</p>
+    </section>
+
+    <section class="card">
       <h2>Countdowns</h2>
       <p class="note" style="margin-top:0">Holidays to count down to (changes apply right away):</p>
       <div class="checks" id="holidayChecks"></div>
@@ -274,7 +288,7 @@ const api = (p) => `${base}${p}${p.includes('?') ? '&' : '?'}k=${encodeURICompon
 let S = null, lastV = -1, dirty = false;
 const PAGE_NAMES = {quad:'Quad', weather:'Weather', news:'News', sports:'Sports', lunch:'Lunch'};
 const PANEL_LABELS = {weather:'Weather', news:'News & markets', sports:'Sports', sky:'Sky (planes)', lunch:'School lunch', calendar:'Calendar',
-  volleyball:'Volleyball', countdown:'Countdown', verse:'Verse of the day', history:'This day in history', hearings:'Hearing Calendar',
+  volleyball:'Volleyball', countdown:'Countdown', verse:'Verse of the day', history:'This day in history', hearings:'Hearing Calendar', todo:'To-Do List',
   smart:'SMART (rotates)'};
 
 async function act(body) {
@@ -303,6 +317,46 @@ function renderAgenda(events) {
     del.onclick = () => { if (confirm('Delete "' + e.title + '"?')) agendaCall({op: 'delete', id: e.id}); };
     row.append(label, del); box.appendChild(row);
   }
+}
+async function todoCall(body) {
+  const r = await fetch(api('/api/todos'), {method: body ? 'POST' : 'GET', body: body ? JSON.stringify(body) : undefined});
+  const j = await r.json(); if (j.error) { alert(j.error); return; }
+  renderTodos(j.items);
+}
+function renderTodos(items) {
+  const box = document.getElementById('todoList'); box.innerHTML = '';
+  if (!items.length) { box.innerHTML = '<p class="note">No tasks yet.</p>'; return; }
+  for (const t of items) {
+    const row = document.createElement('div'); row.className = 'row'; row.style.margin = '4px 0';
+    const label = document.createElement('span'); label.style.flex = '1';
+    const due = t.due ? ' · due ' + new Date(t.due + 'T12:00:00').toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'}) : '';
+    label.textContent = (t.done ? '✓ ' : '☐ ') + t.title + due;
+    if (t.done) { label.style.opacity = '.5'; label.style.textDecoration = 'line-through'; }
+    const done = document.createElement('button'); done.type = 'button'; done.className = 'ghost'; done.textContent = t.done ? 'Undo' : 'Done';
+    done.onclick = () => todoCall({op: 'done', id: t.id, done: !t.done});
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'ghost'; del.textContent = 'Delete';
+    del.onclick = () => { if (confirm('Delete "' + t.title + '"?')) todoCall({op: 'delete', id: t.id}); };
+    row.append(label, done, del); box.appendChild(row);
+  }
+  if (items.some(t => t.done)) {
+    const clr = document.createElement('button'); clr.type = 'button'; clr.className = 'ghost'; clr.textContent = 'Clear done';
+    clr.onclick = () => { if (confirm('Remove all finished tasks?')) todoCall({op: 'clear_done'}); };
+    box.appendChild(clr);
+  }
+}
+async function saveExpire() {          // applies at once, like the other buttons on this card (no Save settings needed)
+  const el = document.getElementById('tdExpire');
+  const n = Math.max(0, Math.min(365, parseInt(el.value, 10) || 0));
+  el.value = n;
+  const r = await fetch(api('/api/config'), {method: 'POST', body: JSON.stringify({todo_expire_days: n})});
+  const j = await r.json(); if (j.error) { alert(j.error); return; }
+  if (S) S.cfg.todo_expire_days = n;
+  setTimeout(poll, 400);
+}
+async function addTodo() {
+  const title = document.getElementById('tdTitle');
+  await todoCall({op: 'add', title: title.value, due: document.getElementById('tdDue').value});
+  title.value = ''; document.getElementById('tdDue').value = '';
 }
 async function cdCall(body) {
   const r = await fetch(api('/api/countdowns'), {method: body ? 'POST' : 'GET', body: body ? JSON.stringify(body) : undefined});
@@ -556,7 +610,7 @@ async function poll() {
     const first = !S;
     S = await r.json();
     if (first || !dirty) fillForm(S.cfg);
-    if (first) { agendaCall(); cdCall(); const t = new Date(); document.getElementById('agDate').value = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
+    if (first) { agendaCall(); cdCall(); todoCall(); document.getElementById('tdExpire').value = S.cfg.todo_expire_days || 0; const t = new Date(); document.getElementById('agDate').value = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
     if (S.version !== lastV) { lastV = S.version; document.getElementById('screen').src = api(`/api/screen.png?v=${S.version}`); }
     render();
   } catch (e) { document.getElementById('hdr').textContent = 'offline'; }

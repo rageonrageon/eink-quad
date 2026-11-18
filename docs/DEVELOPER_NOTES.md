@@ -29,6 +29,7 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
 | `server/sources.py` | Weather, news, quotes, sports (ESPN), odds, the AI brief (`brief`, providers), verse backups, `Cached` helper |
 | `server/lunch.py`, `lunch.json` | School lunch menu (data in the repo, updated monthly) |
 | `server/agenda.py`, `ical.py` | Family calendar: hand-entered events plus calendar feeds (iCal links from env vars) |
+| `server/todo.py` | To-Do List tile: tasks in `todos.json` (add, done, delete, clear done, expiry) |
 | `server/countdown.py` | Holidays (tick boxes) plus custom countdowns |
 | `server/history.py` | This day in history (Wikipedia), with the family-friendly filter |
 | `server/bibleapi.py` | Verse of the day from API.Bible, `verse_refs.json` (verse list), `verses_kjv.json` (offline backup) |
@@ -69,6 +70,11 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
   guessed from words like "vs" and "game".
 - **Countdown**: built-in holidays (tick boxes) plus custom ones (name, start, optional end for a break, yearly
   repeat). Stored in `countdowns.json`; changes apply at once, no Save button.
+- **To-Do List** (`todo.py`): tasks live in `todos.json` on the volume (git-ignored), added on the settings page
+  (title plus optional due date). Shown in the order added with an empty tick box. "Done" hides a task from the
+  screen but keeps it greyed in the settings list until "Clear done" (so a mis-tap can be undone). Setting
+  `todo_expire_days` (default 0 = keep until cleared) deletes tasks N days after they were added; the prune runs
+  whenever the tile's data is taken. The expiry box on the page saves at once (not through Save settings).
 - **Verse of the day**: API.Bible (key in `API_BIBLE_KEY`). The service has no "verse of the day", so a verse is
   picked from `verse_refs.json` by date. "Translations to offer" accepts an abbreviation, a Bible ID, or the
   initials of the full name (only if exactly one Bible fits). Backups: OurManna (NIV), then a built-in KJV list.
@@ -99,12 +105,12 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
   then `git add`, commit with the co-author line, push to `origin main`. Railway redeploys by itself.
 - **Ask before pushing, and before sending anything to the live server.** Show mock-ups before building.
 - **Private runtime files are git-ignored** (`config.json`, `state.json`, `agenda.json`, `countdowns.json`,
-  `tv_local.json`, `hearings.json`). Keep it that way.
+  `tv_local.json`, `hearings.json`, `todos.json`). Keep it that way.
 - **Environment variables** (names only; values live in Railway): `QUAD_TOKEN`, `QUAD_ADMIN`, `QUAD_BIND`,
   `QUAD_PORT`, `QUAD_CONFIG`, `QUAD_STATE`, `QUAD_CONTACT`, `TZ` (a POSIX string such as `CST6CDT,M3.2.0,M11.1.0`,
   because the container has no tz database), `QUAD_ICAL_URL`, `QUAD_ICAL_URL_VOLLEYBALL`, `DEEPSEEK_API_KEY`,
   `ANTHROPIC_API_KEY`, `API_BIBLE_KEY`, and optional path overrides (`QUAD_AGENDA`, `QUAD_COUNTDOWNS`,
-  `QUAD_TVLOCAL`, `QUAD_HEARINGS`, `QUAD_LUNCH`).
+  `QUAD_TVLOCAL`, `QUAD_HEARINGS`, `QUAD_TODOS`, `QUAD_LUNCH`).
 
 ## 6. Gotchas (all learned the hard way)
 

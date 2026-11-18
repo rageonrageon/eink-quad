@@ -10,6 +10,7 @@ server/config.json
 server/state.json
 server/hearings.json
 server/agenda.json
+server/todos.json
 server/countdowns.json
 server/tv_local.json
 server/cache/

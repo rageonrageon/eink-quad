@@ -354,6 +354,7 @@ class Ctx:
     volleyball_on: bool = False                      # is a volleyball feed configured at all
     countdowns: list = field(default_factory=list)   # countdown.Item rows, soonest first
     hearings: list = field(default_factory=list)     # hearings.Day rows: the next hearing days
+    todos: list = field(default_factory=list)        # todo.Item rows: open tasks, in the order added
     smart_step: int = 0                              # which of the SMART tile's panels is up (see panel_smart)
     verse: dict | None = None                        # {"text", "ref", "version"} from sources.votd
     history: list = field(default_factory=list)      # [{"year", "text"}] from history.pick
@@ -1009,6 +1010,41 @@ def panel_volleyball(ctx: Ctx, size):
     return c
 
 
+def panel_todo(ctx: Ctx, size):
+    """Open tasks in the order they were added: an empty tick box, the task, and a small due date on the right."""
+    c, d = canvas(size)
+    w, h = size
+    items = ctx.todos
+    text(d, (12, 3), "TO-DO LIST", F("cb", 18))
+    d.line((10, 25, w - 10, 25), fill=INK, width=2)
+    if not items:
+        text(d, (w / 2, 30 + (h - 30) / 2 - 8), "All done!", F("sb", 19), anchor="mm")
+        text(d, (w / 2, 30 + (h - 30) / 2 + 14), "Add tasks on the settings page", F("m", 14), anchor="mm")
+        return c
+    rh = 29
+    rows = max(1, int((h - 28) // rh))
+    shown = items[:rows]
+    hidden = len(items) - len(shown)
+    y = 28
+    for i, t in enumerate(shown):
+        d.rectangle((12, y + 6, 26, y + 20), outline=INK, width=2)              # empty tick box
+        due = f"{t.due:%a %b} {t.due.day}" if t.due else ""
+        dw = 0
+        if due:
+            fd = F("cm", 14)
+            dw = tw(d, due, fd)
+            text(d, (w - 12, y + 14), due, fd, anchor="rm")
+        avail = w - 40 - (dw + 10 if due else 0)
+        ft = fit_font(d, t.title, "sb", avail, [18, 17, 16, 15])
+        text(d, (36, y + 14), ellipsize(d, t.title, ft, avail), ft, anchor="lm")
+        y += rh
+        if i < len(shown) - 1:
+            dotted(d, 10, w - 10, int(y - 1), 3)
+    if hidden > 0:                           # the count sits in the header, so it costs no row
+        text(d, (w - 12, 5), f"+{hidden} more", F("cm", 15), anchor="ra")
+    return c
+
+
 def panel_countdown(ctx: Ctx, size):
     """Days until: a big number, the name, and the date. A break that is on shows days left."""
     c, d = canvas(size)
@@ -1235,7 +1271,7 @@ def panel_lunch_week(ctx: Ctx, size):
 PANELS = {"weather": panel_weather, "news": panel_news, "sports": panel_sports, "sky": panel_sky,
           "lunch": panel_lunch, "calendar": panel_calendar, "hearings": panel_hearings, "smart": panel_smart,
           "volleyball": panel_volleyball, "countdown": panel_countdown, "verse": panel_verse,
-          "history": panel_history}
+          "history": panel_history, "todo": panel_todo}
 
 
 # ================================================================== chrome

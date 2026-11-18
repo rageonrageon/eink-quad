@@ -35,6 +35,7 @@ import agenda  # noqa: E402
 import bibleapi  # noqa: E402
 import countdown  # noqa: E402
 import hearings  # noqa: E402
+import todo  # noqa: E402
 import history  # noqa: E402
 import ical  # noqa: E402
 import localtv  # noqa: E402
@@ -63,6 +64,7 @@ DEFAULTS = {
     "lat": 27.9506, "lon": -82.4572,
     "units": "F",
     "tv_check": True,            # weekend mornings: which of the family's CBS/FOX games are really on Omaha TV
+    "todo_expire_days": 0,        # To-Do List: 0 = tasks stay until cleared; N = a task falls off N days after it was added
     "history_skip_politics": True,   # leave elections and the like out of This Day in History
     "votd_version": "NIV",       # translation for the verse of the day tile
     "votd_choices": ["NLT", "NIV", "AMP"],   # the translations offered (the ones added in the API.Bible account)
@@ -131,6 +133,7 @@ def save_json(path, obj):
 
 countdown.PATH = os.environ.get("QUAD_COUNTDOWNS") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "countdowns.json")
 agenda.PATH = os.environ.get("QUAD_AGENDA") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "agenda.json")
+todo.PATH = os.environ.get("QUAD_TODOS") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "todos.json")
 hearings.PATH = os.environ.get("QUAD_HEARINGS") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "hearings.json")
 localtv.PATH = os.environ.get("QUAD_TVLOCAL") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "tv_local.json")
 cfg = {**DEFAULTS, **load_json(CONFIG_PATH, {})}
@@ -293,6 +296,10 @@ class Board:
         elif name == "hearings":
             import datetime as _dt
             self.snap["hearings"] = hearings.upcoming(_dt.date.today(), 3)
+        elif name == "todo":
+            import datetime as _dt
+            todo.prune(_dt.date.today(), int(cfg.get("todo_expire_days", 0) or 0))
+            self.snap["todos"] = todo.open_items()
         elif name == "history":
             try:
                 self.snap["history"] = history.pick(time.time(), 2, cfg.get("history_skip_politics", True))
@@ -337,7 +344,7 @@ class Board:
         return R.Ctx(now=now, cfg=cfg, weather=sn.get("weather"), heads=sn.get("heads") or [],
                      quotes=sn.get("quotes") or [], teams=sn.get("teams") or [], featured=sn.get("featured"),
                      recent=sn.get("recent") or [], day_count=sn.get("day_count", 0), nearby=sn.get("nearby") or [],
-                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], countdowns=sn.get("countdowns") or [], verse=sn.get("verse"), history=sn.get("history") or [], hearings=sn.get("hearings") or [], volleyball=sn.get("volleyball") or [],
+                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], countdowns=sn.get("countdowns") or [], verse=sn.get("verse"), history=sn.get("history") or [], hearings=sn.get("hearings") or [], todos=sn.get("todos") or [], volleyball=sn.get("volleyball") or [],
                      volleyball_name=sn.get("volleyball_name", ""), volleyball_on=bool(ical.VOLLEYBALL.url()), brief=sn.get("brief", ""),
                      sticky=sticky, indoor_f=t_f, indoor_rh=dv.get("rh"), battery=batt,
                      on_usb=dv.get("mode") == "live", cycle=self.cycle, smart_step=self.smart_step, updated=self.updated or now,
@@ -423,7 +430,7 @@ class Board:
         beat = int(now // iv)
         due = []
         if self.beats.get("main") != beat:
-            due = ["weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "brief"]
+            due = ["weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo", "brief"]
             self.beats["main"] = beat
             with self.cond:
                 self.cycle += 1
@@ -563,7 +570,7 @@ class Board:
                     return self.redraw("home", major=True)
                 self.note_event("manual refresh")
         if b == 0:
-            for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings"):
+            for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo"):
                 try:
                     self.take(name, force=True)
                 except Exception:
@@ -667,6 +674,8 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, countdown.settings())
             if p == "/api/hearings":
                 return self.send(200, {"days": hearings.load()})
+            if p == "/api/todos":
+                return self.send(200, {"items": todo.listing()})
             if p == "/api/teams":
                 return self.send(200, {k: v[0] for k, v in S.TEAMS.items()})
             return self.send(404, {"error": "not found"})
@@ -705,6 +714,20 @@ class H(BaseHTTPRequestHandler):
                 with board.cond:
                     board.redraw("countdown changed")
                 return self.send(200, countdown.settings())
+            if p == "/api/todos":
+                op = body.get("op")
+                if op == "delete":
+                    todo.delete(str(body.get("id", "")))
+                elif op == "done":
+                    todo.set_done(str(body.get("id", "")), bool(body.get("done", True)))
+                elif op == "clear_done":
+                    todo.clear_done()
+                else:
+                    todo.add(body.get("title", ""), body.get("due", ""))
+                board.take("todo")
+                with board.cond:
+                    board.redraw("to-do list changed")
+                return self.send(200, {"items": todo.listing()})
             if p == "/api/agenda":
                 if body.get("op") == "delete":
                     agenda.delete(str(body.get("id", "")))
@@ -824,7 +847,7 @@ class H(BaseHTTPRequestHandler):
         if moved:
             start_sky()
         # data-shaping changes need a refetch; purely visual ones just a redraw
-        for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings"):
+        for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo"):
             try:
                 board.take(name, force=name in ("weather",) and moved)
             except Exception:
@@ -935,7 +958,7 @@ class Server(ThreadingHTTPServer):
 
 def warm():
     netcheck.run_async()          # which sites will this server be allowed to reach? (Health panel)
-    for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings"):
+    for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo"):
         try:
             board.take(name)
         except Exception:
