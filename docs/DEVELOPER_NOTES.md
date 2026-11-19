@@ -14,6 +14,8 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
 - The server keeps a **snapshot** of each tile's data (`Board.snap`), refreshed on the "main beat" every
   `interval_min` minutes (default 10) by `Board.take(name)`; then `redraw()` composes the screen and only
   commits a new version if something visible changed. The tablet picks up new versions at its next check-in.
+- **Settings page layout**: the board image, then the Layout and SMART cards, come first so a phone shows them
+  without scrolling past everything else; the Save settings button floats at the bottom-right of the screen.
 - **Settings** live in `config.json` on the Railway volume (`/data`). Only values that differ from `DEFAULTS` in
   `app.py` are saved. The settings page is `server/web/dashboard.html` (one file, plain JS), opened with
   `/?k=<admin token>`.
@@ -93,7 +95,10 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
   `/api/hearing-days` (GET returns `{date: "p"|"r"}`, POST `{date, value: p|r|x}`), leaving the other days (and an
   imported day's count and extra codes) untouched. The phone key opens only that page and API, never the
   settings page. Dates in the past or more than 400 days ahead are refused.
-- **SMART tile**: rotates through up to three chosen tiles that are not already on the board. The step moves once
+- **Plane (sky) tile: removed on purpose.** The original author's plane radar, ISS and launch tile (`sky.py`,
+  `adsb.py`, `aircraft.py`, `skyevents.py`) was deleted from this fork. An old saved config that still lists it is
+  cleaned up when the server starts. Do not re-add it unless asked.
+- **SMART tile**: rotates through up to five chosen tiles that are not already on the board. The step moves once
   per update the tablet receives: on each main beat while awake, on each wake-up while asleep (throttled).
 - **Weather tile**: a big HIGH / LOW row under the description; the rain chart shows only when rain is possible
   (it is an empty frame on dry days).
@@ -131,4 +136,13 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
 - **rate limits**: bible-api.com allows about 15 requests per 30 seconds; back off when bulk-fetching.
 - **The tablet only sees a new screen when it checks in** (up to `sleep_min` minutes on battery); a button press
   forces an update.
-- **Quiet hours** pause scheduled updates (and the SMART rotation); the screen keeps its last image.
+- **Quiet hours** pause scheduled updates (and the SMART rotation); the screen keeps its last image. With
+  `quiet_sleep` on (default), a tablet on battery is also told (`X-Next` in `device_poll`) to sleep until 90 seconds
+  after quiet hours end, instead of waking every `sleep_min`; a button press still wakes it. A nonsense range
+  (e.g. `6-6`) is ignored.
+- **Two clocks**: `interval_min` is how often the *server* collects data and redraws; `sleep_min` is how often a
+  *battery* tablet checks in (only then does the glass change). Plugged in (`awake_above_v`), the tablet follows
+  `interval_min`. With crisp mode on, nearly every scheduled update is already a full refresh, so
+  `full_every_min` and `max_partials` only matter for small edits; they live under "Advanced" on the page.
+- **The settings page must stay phone-safe**: keep tables wrapping (`td:first-child` may wrap under 900 px) or one
+  wide row stretches the whole page and pushes the floating Save button off screen.

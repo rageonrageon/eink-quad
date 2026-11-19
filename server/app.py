@@ -42,9 +42,7 @@ import localtv  # noqa: E402
 import lunch  # noqa: E402
 import netcheck  # noqa: E402
 import render as R  # noqa: E402
-import skyevents  # noqa: E402
 import sources as S  # noqa: E402
-from sky import Sky  # noqa: E402
 
 # ---------------------------------------------------------------- CONFIG
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -70,11 +68,10 @@ DEFAULTS = {
     "history_skip_politics": True,   # leave elections and the like out of This Day in History
     "votd_version": "NIV",       # translation for the verse of the day tile
     "votd_choices": ["NLT", "NIV", "AMP"],   # the translations offered (the ones added in the API.Bible account)
-    "smart_tiles": [],           # up to three panels the SMART tile rotates through (see render.panel_smart)
+    "smart_tiles": [],           # up to five panels the SMART tile rotates through (see render.panel_smart)
     "layout": "five",            # quad = 2x2 (4 slots), five = 2 on top + 3 across the bottom (5 slots)
     "slots": ["weather", "lunch", "sports", "news", "calendar"],
     "interval_min": 10,          # the main cadence: every panel refreshes on this beat
-    "sky_min": 10,               # plane panel can run faster (partial refresh, no flash)
     "live_fast": True,           # while a team is playing, sports refreshes every live_min
     "live_min": 3,
     "lunch_switch_hour": 13,     # from this hour (24-hour clock, server time) the lunch tile shows tomorrow first; 24 = never
@@ -82,6 +79,7 @@ DEFAULTS = {
     "awake_above_v": 4.10,       # stay awake (Wi-Fi on) only above this battery voltage, i.e. while charging
     "full_every_min": 120,       # one flashing full refresh this often, to wipe ghosting
     "quiet": "",                 # "23-6" = no scheduled updates overnight
+    "quiet_sleep": True,         # on battery, the tablet also sleeps through quiet hours (one check-in just after they end)
     "dark": False,
     "feeds": ["world", "us", "markets"],
     "max_age_h": 18,
@@ -96,8 +94,6 @@ DEFAULTS = {
     "sports_logos": True,
     "odds": True,
     "odds_style": "spread",      # spread | moneyline | winpct (hockey/baseball always moneyline)
-    "radar_nm": 25,
-    "iss": True, "launch": True,
     "headline_bar": True,        # the line under the date (messages and severe alerts still show when off)
     "llm_brief": True,
     "llm_brief_min": 60,
@@ -109,8 +105,8 @@ DEFAULTS = {
     "note_minutes": 10,
     "chime": True,
     # crisp: the regular 10-min update, page changes and the refresh button use a
-    # full refresh (one ~3.5s flash, solid blacks). Only in-between nudges (plane
-    # corner, live scores, messages) use the fast partial, which leaves blacks
+    # full refresh (one ~3.5s flash, solid blacks). Only in-between nudges (live
+    # scores, messages) use the fast partial, which leaves blacks
     # lighter and speckled; after max_partials of those the next one goes full.
     "crisp": True,
     "gray": True,               # full refreshes in 4 grey levels (anti-aliased text)
@@ -140,6 +136,11 @@ hearings.PATH = os.environ.get("QUAD_HEARINGS") or os.path.join(os.path.dirname(
 localtv.PATH = os.environ.get("QUAD_TVLOCAL") or os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "tv_local.json")
 cfg = {**DEFAULTS, **load_json(CONFIG_PATH, {})}
 bibleapi.set_allowed(cfg.get("votd_choices"))
+# a tile that no longer exists (the old Sky/plane tile) is dropped from saved slots and SMART choices
+cfg["slots"] = [p for p in cfg["slots"] if p in R.PANELS]
+cfg["smart_tiles"] = [p for p in cfg.get("smart_tiles", []) if p in R.PANELS]
+for _gone in ("sky_min", "radar_nm", "iss", "launch"):
+    cfg.pop(_gone, None)
 # settings saved before the layout existed may carry too few slots: pad from the defaults
 _want = 5 if cfg.get("layout") == "five" else 4
 cfg["slots"] = (list(cfg["slots"]) + [p for p in DEFAULTS["slots"] if p not in cfg["slots"]])[:_want]
@@ -156,6 +157,17 @@ def quiet_now(t=None):
     return (a <= h < b) if a < b else (h >= a or h < b)
 
 
+def quiet_seconds_left(t=None):
+    """Seconds until quiet hours end, or 0 when it is not quiet now (or the setting is not a usable range)."""
+    t = t or time.time()
+    if not quiet_now(t):
+        return 0
+    m = re.fullmatch(r"\s*(\d{1,2})\s*-\s*(\d{1,2})\s*", cfg.get("quiet") or "")
+    lt = time.localtime(t)
+    left = ((int(m.group(2)) - lt.tm_hour) % 24) * 3600 - lt.tm_min * 60 - lt.tm_sec
+    return left if 0 < left <= 14 * 3600 else 0        # a nonsense range such as 6-6 is ignored
+
+
 def lipo_percent(v: float) -> int:
     """Seeed's own voltage->% table for the reTerminal E series (ESPHome
     cookbook, wiki.seeedstudio.com/reterminal_e10xx_with_esphome_advanced).
@@ -169,20 +181,6 @@ def lipo_percent(v: float) -> int:
         if v <= v1:
             return int(round(p0 + (p1 - p0) * (v - v0) / (v1 - v0)))
     return 100
-
-
-# ---------------------------------------------------------------- sky
-
-sky = None
-events = None
-
-
-def start_sky():
-    global sky, events
-    sky = Sky(cfg["lat"], cfg["lon"], radius_nm=max(10, int(cfg["radar_nm"])))
-    sky.start()
-    events = skyevents.SkyEvents(cfg["lat"], cfg["lon"], iss=cfg["iss"], launch=cfg["launch"])
-    events.start()
 
 
 # ---------------------------------------------------------------- note box bridge
@@ -226,7 +224,7 @@ PAGES = ["quad", "weather", "news", "sports", "lunch"]
 class Board:
     """What the glass shows, the reel that gets it there, and the data snapshot
     each panel was last drawn from. Panels only take fresh data on their own
-    beat, so e.g. the plane corner can move every 2 min while the news corner
+    beat, so e.g. live scores can move every few minutes while the news corner
     sits still (and costs no refresh)."""
 
     def __init__(self):
@@ -280,13 +278,6 @@ class Board:
                     urls += [g.opp_logo for g in (r.live, r.last, r.next) if g]
                 logos.prefetch(urls)
             self.snap["teams"], self.snap["live"] = teams, live
-        elif name == "sky":
-            featured, recent, _ = sky.snapshot()
-            self.snap["featured"], self.snap["recent"] = featured, recent
-            self.snap["nearby"] = sky.nearby()
-            self.snap["day_count"] = sky.day_stats().count
-            self.snap["event"] = events.next_event()
-            self.snap["upcoming"] = events.upcoming()
         elif name == "calendar":
             now = time.time()
             evs = agenda.upcoming(now)
@@ -344,9 +335,8 @@ class Board:
         if t_f is not None and cfg.get("units") != "C":
             t_f = t_f * 9 / 5 + 32
         return R.Ctx(now=now, cfg=cfg, weather=sn.get("weather"), heads=sn.get("heads") or [],
-                     quotes=sn.get("quotes") or [], teams=sn.get("teams") or [], featured=sn.get("featured"),
-                     recent=sn.get("recent") or [], day_count=sn.get("day_count", 0), nearby=sn.get("nearby") or [],
-                     event=sn.get("event"), upcoming=sn.get("upcoming") or [], lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], countdowns=sn.get("countdowns") or [], verse=sn.get("verse"), history=sn.get("history") or [], hearings=sn.get("hearings") or [], todos=sn.get("todos") or [], volleyball=sn.get("volleyball") or [],
+                     quotes=sn.get("quotes") or [], teams=sn.get("teams") or [],
+                     lunch=sn.get("lunch") or [], agenda=sn.get("agenda") or [], countdowns=sn.get("countdowns") or [], verse=sn.get("verse"), history=sn.get("history") or [], hearings=sn.get("hearings") or [], todos=sn.get("todos") or [], volleyball=sn.get("volleyball") or [],
                      volleyball_name=sn.get("volleyball_name", ""), volleyball_on=bool(ical.VOLLEYBALL.url()), brief=sn.get("brief", ""),
                      sticky=sticky, indoor_f=t_f, indoor_rh=dv.get("rh"), battery=batt,
                      on_usb=dv.get("mode") == "live", cycle=self.cycle, smart_step=self.smart_step, updated=self.updated or now,
@@ -432,27 +422,19 @@ class Board:
         beat = int(now // iv)
         due = []
         if self.beats.get("main") != beat:
-            due = ["weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo", "brief"]
+            due = ["weather", "news", "sports", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo", "brief"]
             self.beats["main"] = beat
             with self.cond:
                 self.cycle += 1
                 if self.device.get("mode") != "sleep":       # a sleeping tablet moves it on at each wake-up instead
                     self.smart_step += 1
         else:
-            sb = int(now // (max(1, cfg["sky_min"]) * 60))
-            ev = events.next_event() if events else None
-            if ev is not None:   # event countdown ticks every minute
-                sb = int(now // 60)
-            if self.beats.get("sky") != sb:
-                due.append("sky")
             live = self.snap.get("live")
             if live and cfg.get("live_fast"):
                 lb = int(now // (max(1, cfg["live_min"]) * 60))
                 if self.beats.get("live") != lb:
                     due.append("sports")
                     self.beats["live"] = lb
-        if "sky" in due:
-            self.beats["sky"] = int(now // (max(1, cfg["sky_min"]) * 60))
         if not due:
             return
         for name in due:
@@ -572,7 +554,7 @@ class Board:
                     return self.redraw("home", major=True)
                 self.note_event("manual refresh")
         if b == 0:
-            for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo"):
+            for name in ("weather", "news", "sports", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo"):
                 try:
                     self.take(name, force=True)
                 except Exception:
@@ -791,9 +773,6 @@ class H(BaseHTTPRequestHandler):
             "weather": S._weather.status(), "alerts": S._alerts.status(), "news": S.news_status(),
             "quotes": S.quotes_status(), "sports": S.sports_status(), "brief": {**S.brief_status(), "provider": cfg.get("llm_provider", "claude"),
                       "ready": S.llm_ready(cfg.get("llm_provider", "claude"))},
-            "sky": {"age_s": round(now - sky.updated_at) if sky and sky.updated_at else None,
-                    "error": sky.last_error if sky else None},
-            "events": events.status if events else None,
             "ical": ical.status(),
             "ical_volleyball": ical.VOLLEYBALL.status(),
             "verse": S.votd_status(cfg.get("votd_version", "NIV")),
@@ -841,7 +820,7 @@ class H(BaseHTTPRequestHandler):
             else:
                 v = str(v)
             new[k] = v
-        new["smart_tiles"] = [p for p in dict.fromkeys(new["smart_tiles"]) if p in R.PANELS and p != "smart"][:3]
+        new["smart_tiles"] = [p for p in dict.fromkeys(new["smart_tiles"]) if p in R.PANELS and p != "smart"][:5]
         if new["layout"] not in ("quad", "five"):
             raise ValueError("layout must be quad or five")
         want = 5 if new["layout"] == "five" else 4
@@ -849,8 +828,7 @@ class H(BaseHTTPRequestHandler):
         new["slots"] = (new["slots"] + spare)[:want]
         if len(set(new["slots"])) != want or not set(new["slots"]) <= set(R.PANELS):
             raise ValueError(f"slots must be {want} different panels")
-        moved = (new["lat"], new["lon"], new["radar_nm"], new["iss"], new["launch"]) != \
-                (cfg["lat"], cfg["lon"], cfg["radar_nm"], cfg["iss"], cfg["launch"])
+        moved = (new["lat"], new["lon"]) != (cfg["lat"], cfg["lon"])
         if new["llm_provider"] not in S.LLM_PROVIDERS:
             raise ValueError("unknown brief provider")
         llm_changed = any(new.get(k) != cfg.get(k) for k in ("llm_brief", "llm_provider", "llm_model", "deepseek_model", "layout", "slots"))
@@ -868,10 +846,8 @@ class H(BaseHTTPRequestHandler):
                 except Exception:
                     traceback.print_exc()
             threading.Thread(target=_rewrite, daemon=True).start()
-        if moved:
-            start_sky()
         # data-shaping changes need a refetch; purely visual ones just a redraw
-        for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo"):
+        for name in ("weather", "news", "sports", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo"):
             try:
                 board.take(name, force=name in ("weather",) and moved)
             except Exception:
@@ -962,9 +938,14 @@ class H(BaseHTTPRequestHandler):
                 body = R.encode_reel([(board.final, 0, True, g)])
             else:
                 body = R.encode_reel([(board.final, 0, q.get("fresh") == "1")])
+            nxt = max(5, int(cfg.get("sleep_min", 30))) * 60 if mode == "sleep" else 0
+            if mode == "sleep" and cfg.get("quiet_sleep", True):
+                left = quiet_seconds_left()
+                if left:                    # sleep through quiet hours: wake a minute and a half after they end, when the
+                    nxt = left + 90             # scheduler has had time to take fresh data (a button still wakes it at once)
             headers = {
                 "X-Version": board.version, "X-Mode": mode,
-                "X-Next": max(5, int(cfg.get("sleep_min", 30))) * 60 if mode == "sleep" else 0,
+                "X-Next": nxt,
                 "X-Unread": int(board.unread),
                 "X-Chime": int(board.chime_version == board.version and v != board.version),
                 "X-Clean": 0,     # the server schedules full refreshes itself
@@ -982,13 +963,11 @@ class Server(ThreadingHTTPServer):
 
 def warm():
     netcheck.run_async()          # which sites will this server be allowed to reach? (Health panel)
-    for name in ("weather", "news", "sports", "sky", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo"):
+    for name in ("weather", "news", "sports", "lunch", "calendar", "volleyball", "countdown", "verse", "history", "hearings", "todo"):
         try:
             board.take(name)
         except Exception:
             traceback.print_exc()
-    time.sleep(8)          # let the sky poller land its first answer
-    board.take("sky")
     board.take("brief")
     with board.cond:
         board.beats["main"] = int(time.time() // (max(1, cfg["interval_min"]) * 60))
@@ -997,7 +976,6 @@ def warm():
 
 
 if __name__ == "__main__":
-    start_sky()
     print(f"quad board on {BIND}:{PORT} tz={os.environ['TZ']} notes={'on' if nb else 'off'}", flush=True)
     threading.Thread(target=warm, daemon=True).start()
     Server((BIND, PORT), H).serve_forever()

@@ -135,12 +135,6 @@ def tri(d, x, y, size, up, fill=INK):
         d.polygon([(x, y), (x + size, y), (x + size / 2, y + size)], fill=fill)
 
 
-def arrow_right(d, x, y, w, h, width=3):
-    """A drawn arrow; the fonts' U+2192 is inconsistent at mono rendering."""
-    d.line((x, y, x + w - h * 0.6, y), fill=INK, width=width)
-    d.polygon([(x + w, y), (x + w - h, y - h * 0.6), (x + w - h, y + h * 0.6)], fill=INK)
-
-
 # ------------------------------------------------------------------ icons
 
 _icon_cache = {}
@@ -234,27 +228,6 @@ def paste_logo(c, url, x, y, size, cfg=None):
     return True
 
 
-def compass_arrow(c, cx, cy, r, bearing):
-    """Arrow pointing where to look (0 = north = up)."""
-    S = 4
-    big = Image.new("L", (r * 2 * S, r * 2 * S), PAPER)
-    d = ImageDraw.Draw(big)
-    R = r * S
-    d.ellipse((2, 2, 2 * R - 2, 2 * R - 2), outline=INK, width=S * 2)
-    a = math.radians(bearing)
-
-    def pt(dist, ang):
-        return (R + dist * math.sin(ang), R - dist * math.cos(ang))
-    tip, tail = pt(R * 0.78, a), pt(R * 0.55, a + math.pi)
-    l, rr = pt(R * 0.36, a + math.radians(140)), pt(R * 0.36, a - math.radians(140))
-    d.polygon([tip, l, tail, rr], fill=INK)
-    dn = ImageDraw.Draw(big)
-    dn.text((R, S * 4), "N", font=F("b", 9 * S), fill=INK, anchor="mt")
-    sm = big.resize((2 * r, 2 * r), Image.LANCZOS)
-    x, y = int(cx - r), int(cy - r)
-    c.paste(ImageChops.darker(c.crop((x, y, x + 2 * r, y + 2 * r)), sm), (x, y))
-
-
 # ------------------------------------------------------------------ helpers for time
 
 def hm(ts, ampm=True):
@@ -291,35 +264,6 @@ def ago(ts):
 # ================================================================== panels
 
 @dataclass
-class Sighting:
-    """One flight, already resolved -- what the layout actually draws."""
-    callsign: str
-    airline: str
-    origin: str
-    dest: str
-    origin_city: str
-    dest_city: str
-    alt_ft: int
-    speed_kt: float
-    dist_nm: float
-    elev_deg: float
-    seen_at: float
-    # The marketed flight number (BA208), not the ICAO callsign (BAW208) --
-    # the former is what you can type into a search box. Blank when unknown.
-    flight_no: str = ""
-    aircraft: str = ""          # "Boeing 787 Dreamliner"
-    bearing: float = 0.0        # degrees from the house to the aircraft
-    progress: float = None      # 0..1 along the route, None if unknown
-    eta_min: int = None         # minutes to destination, None if unknown
-    dest_dist_nm: float = 0.0   # house -> destination, for "farthest today"
-
-    @property
-    def has_route(self) -> bool:
-        return bool(self.origin and self.dest)
-
-
-
-@dataclass
 class Ctx:
     """Everything a frame needs. Built by app.py; render never fetches."""
     now: float
@@ -328,12 +272,6 @@ class Ctx:
     heads: list = field(default_factory=list)
     quotes: list = field(default_factory=list)
     teams: list = field(default_factory=list)
-    featured: object = None       # sky Sighting
-    recent: list = field(default_factory=list)
-    day_count: int = 0
-    nearby: list = field(default_factory=list)
-    event: object = None
-    upcoming: list = field(default_factory=list)
     brief: str = ""
     sticky: str = ""
     indoor_f: float | None = None
@@ -757,144 +695,6 @@ def panel_sports(ctx: Ctx, size, rows=None):
     return c
 
 
-def _flight_label(s):
-    return s.flight_no or s.callsign
-
-
-def panel_sky(ctx: Ctx, size):
-    c, d = canvas(size)
-    w, h = size
-    if ctx.event is not None:
-        return _event_card(c, d, ctx, size)
-    s = ctx.featured
-    if s is None:
-        return _quiet_sky(c, d, ctx, size)
-    # header: OVERHEAD NOW + flight number
-    y = 6
-    f_air = F("sb", 18)
-    air = s.airline or "Private / unknown"
-    fn = _flight_label(s)
-    fnf = F("cb", 22)
-    text(d, (12, y + 2), ellipsize(d, air, f_air, w - 40 - tw(d, fn, fnf)), f_air)
-    text(d, (w - 12, y), fn, fnf, anchor="ra")
-    y += 30
-    if s.has_route:
-        f = F("b", 46)
-        ow = tw(d, s.origin, f)
-        text(d, (12, y - 6), s.origin, f)
-        ax = 12 + ow + 10
-        arrow_right(d, ax, y + 22, 44, 11, width=4)
-        text(d, (ax + 56, y - 6), s.dest, f)
-        y += 50
-        cities = f"{s.origin_city or s.origin} to {s.dest_city or s.dest}"
-        text(d, (12, y), ellipsize(d, cities, F("m", 16), w - 24), F("m", 16))
-        y += 22
-        if s.progress is not None:
-            bx0, bx1 = 12, w - 12
-            d.rounded_rectangle((bx0, y + 2, bx1, y + 10), radius=4, outline=INK, width=2)
-            px = bx0 + (bx1 - bx0) * s.progress
-            d.rounded_rectangle((bx0, y + 2, max(bx0 + 8, px), y + 10), radius=4, fill=INK)
-            y += 14
-            if s.eta_min is not None:
-                eta = f"{s.eta_min // 60}h {s.eta_min % 60:02d}m" if s.eta_min >= 60 else f"{s.eta_min} min"
-                text(d, (12, y), f"{eta} to {s.dest_city or s.dest}", F("cm", 15))
-                y += 18
-    else:
-        f = F("b", 38)
-        text(d, (12, y - 4), s.callsign or "Unknown", f)
-        y += 46
-        text(d, (12, y), "Route unknown", F("m", 16))
-        y += 24
-    # bottom block: type, altitude, where to look
-    by = h - 48
-    d.line((10, by - 4, w - 10, by - 4), fill=INK, width=1)
-    alt = f"{s.alt_ft:,} ft" if s.alt_ft else "ground"
-    text(d, (12, by), ellipsize(d, s.aircraft or "Aircraft", F("sb", 17), w - 80), F("sb", 17))
-    text(d, (12, by + 21), f"{alt} · {s.speed_kt:.0f} kt · {s.dist_nm * 1.15078:.1f} mi", F("cm", 16))
-    from adsb import compass
-    compass_arrow(c, w - 34, by + 20, 21, s.bearing)
-    look = f"look {compass(s.bearing)}"
-    text(d, (w - 62, by + 3), look, F("csb", 16), anchor="ra")
-    text(d, (w - 62, by + 22), f"{s.elev_deg:.0f}° up", F("cm", 15), anchor="ra")
-    return c
-
-
-def _radar(c, d, cx, cy, r, blips, radius_nm, labels=False):
-    d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=INK, width=2)
-    d.ellipse((cx - r / 2, cy - r / 2, cx + r / 2, cy + r / 2), outline=INK, width=1)
-    d.line((cx - r, cy, cx + r, cy), fill=INK)
-    d.line((cx, cy - r, cx, cy + r), fill=INK)
-    d.rectangle((cx - 3, cy - 3, cx + 3, cy + 3), fill=INK)
-    text(d, (cx, cy - r - 2), "N", F("cb", 13), anchor="md")
-    for b in blips:
-        dist, brg = b[0], b[1]
-        if dist > radius_nm:
-            continue
-        rr = dist / radius_nm * r
-        x = cx + rr * math.sin(math.radians(brg))
-        y = cy - rr * math.cos(math.radians(brg))
-        d.ellipse((x - 3, y - 3, x + 3, y + 3), fill=INK)
-        if labels and len(b) > 2 and b[2]:
-            text(d, (x + 5, y - 7), b[2], F("cm", 13))
-
-
-def _blips(ctx):
-    out = []
-    for b in ctx.nearby or []:
-        if isinstance(b, dict):
-            out.append((b.get("dist_nm", 0), b.get("bearing", 0), b.get("callsign", "")))
-        else:
-            out.append(tuple(b))
-    return out
-
-
-def _quiet_sky(c, d, ctx, size):
-    w, h = size
-    radius = ctx.cfg.get("radar_nm", 25)
-    _radar(c, d, 80, h / 2 + 6, 66, _blips(ctx), radius)
-    x = 168
-    text(d, (x, 14), "QUIET SKY", F("cb", 24))
-    n = len(_blips(ctx))
-    text(d, (x, 44), f"{n} plane{'s' if n != 1 else ''} within {radius} nm", F("m", 16))
-    text(d, (x, 66), f"{ctx.day_count} flew over today", F("m", 16))
-    y = 96
-    if ctx.recent:
-        text(d, (x, y), "LAST OVERHEAD", F("cb", 15))
-        y += 20
-        for s in ctx.recent[:3]:
-            route = f"{s.origin}–{s.dest}" if s.has_route else s.callsign
-            text(d, (x, y), ellipsize(d, f"{_flight_label(s)}  {route}", F("sb", 16), w - x - 70), F("sb", 16))
-            text(d, (w - 10, y + 1), ago(s.seen_at).replace(" ago", ""), F("cm", 15), anchor="ra")
-            y += 21
-    return c
-
-
-def _event_card(c, d, ctx, size):
-    w, h = size
-    ev = ctx.event
-    mins = max(0, int((ev.start - ctx.now) // 60))
-    head = "SPACE STATION" if ev.kind == "iss" else "ROCKET LAUNCH"
-    d.rectangle((0, 0, w, 30), fill=INK)
-    text(d, (12, 15), head, F("cb", 22), fill=PAPER, anchor="lm")
-    when_s = "now" if ev.start <= ctx.now else (f"in {mins} min" if mins < 90 else hm(ev.start))
-    text(d, (w - 12, 15), when_s.upper(), F("cb", 22), fill=PAPER, anchor="rm")
-    text(d, (12, 40), ellipsize(d, ev.title, F("b", 34), w - 110), F("b", 34))
-    text(d, (12, 82), ellipsize(d, ev.subtitle or "", F("m", 17), w - 110), F("m", 17))
-    lines = []
-    if ev.where:
-        lines.append(f"Look {ev.where}, {ev.height}".strip(", "))
-    if ev.kind == "iss" and ev.duration_s:
-        lines.append(f"Visible ~{max(1, ev.duration_s // 60)} min · peaks at {hm(ev.start)}")
-    if ev.kind == "launch":
-        lines.append(f"Liftoff {hm(ev.start)} · {ev.distance_nm:.0f} nm away · {ev.confidence}")
-    y = 112
-    for ln in lines:
-        text(d, (12, y), ellipsize(d, ln, F("sb", 17), w - 110), F("sb", 17))
-        y += 24
-    compass_arrow(c, w - 52, 100, 38, ev.bearing)
-    return c
-
-
 def panel_lunch(ctx: Ctx, size):
     c, d = canvas(size)
     w, h = size
@@ -1188,7 +988,7 @@ def panel_hearings(ctx: Ctx, size):
 
 
 def smart_names(cfg: dict) -> list:
-    """The panels the SMART tile rotates through: up to three it was given, leaving out any that is already
+    """The panels the SMART tile rotates through: up to five it was given, leaving out any that is already
     showing in another slot (it would only repeat what the board shows) and anything unknown."""
     n = 5 if cfg.get("layout") == "five" else 4
     used = set((cfg.get("slots") or [])[:n]) - {"smart"}
@@ -1196,7 +996,7 @@ def smart_names(cfg: dict) -> list:
     for name in cfg.get("smart_tiles") or []:
         if name in PANELS and name != "smart" and name not in used and name not in out:
             out.append(name)
-    return out[:3]
+    return out[:5]
 
 
 def smart_current(cfg: dict, step: int):
@@ -1268,7 +1068,7 @@ def panel_lunch_week(ctx: Ctx, size):
     return c
 
 
-PANELS = {"weather": panel_weather, "news": panel_news, "sports": panel_sports, "sky": panel_sky,
+PANELS = {"weather": panel_weather, "news": panel_news, "sports": panel_sports,
           "lunch": panel_lunch, "calendar": panel_calendar, "hearings": panel_hearings, "smart": panel_smart,
           "volleyball": panel_volleyball, "countdown": panel_countdown, "verse": panel_verse,
           "history": panel_history, "todo": panel_todo}
@@ -1425,7 +1225,7 @@ def compose_quad(ctx: Ctx, panels: dict | None = None) -> Image.Image:
         d.line((6, gy + ch, CELL_W - 6, gy + ch), fill=INK, width=2)
         return c
     layout = ctx.cfg.get("layout")
-    slots = ctx.cfg.get("slots", ["weather", "news", "sports", "sky"])
+    slots = ctx.cfg.get("slots", ["weather", "news", "sports", "lunch"])
     boxes = slot_boxes(bar, layout)
     for name, box in zip(slots, boxes):
         img = (panels or {}).get(name)
@@ -1599,33 +1399,6 @@ def detail_sports(ctx, size):
         y += rh
         if i < n - 1:
             dotted(d, 12, w - 12, int(y - 4), 3)
-    return c
-
-
-def detail_sky(ctx, size):
-    c, d = canvas(size)
-    w, h = size
-    radius = ctx.cfg.get("radar_nm", 25)
-    _radar(c, d, 200, h / 2 + 6, 180, _blips(ctx), radius, labels=True)
-    text(d, (16, 8), f"{radius} nm", F("cm", 15))
-    x = 410
-    right = panel_sky(ctx, (390, 207))
-    c.paste(right, (x, 0))
-    y = 214
-    d.line((x, y - 4, w - 10, y - 4), fill=INK, width=2)
-    text(d, (x + 8, y), f"LOGBOOK · {ctx.day_count} TODAY", F("cb", 17))
-    y += 24
-    for s in ctx.recent[:6]:
-        route = f"{s.origin}–{s.dest}" if s.has_route else ""
-        text(d, (x + 8, y), _flight_label(s), F("sb", 17))
-        text(d, (x + 100, y), route, F("m", 17))
-        text(d, (x + 200, y), ellipsize(d, s.aircraft or "", F("cm", 15), 110), F("cm", 15))
-        text(d, (w - 12, y + 1), hm(s.seen_at), F("cm", 15), anchor="ra")
-        y += 22
-    if ctx.upcoming and y < h - 24:
-        ev = ctx.upcoming[0]
-        text(d, (x + 8, h - 24), ellipsize(d, f"Next: {ev.title} {time.strftime('%a', time.localtime(ev.start))} {hm(ev.start)}",
-                                         F("csb", 16), w - x - 20), F("csb", 16))
     return c
 
 

@@ -41,10 +41,14 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--ink)}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td{padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 td:first-child{font-weight:600;white-space:nowrap}
+@media (max-width:900px){td:first-child{white-space:normal;width:42%}td{overflow-wrap:anywhere}}
 .log{max-height:220px;overflow:auto;font:13px/1.5 ui-monospace,Menlo,monospace;color:var(--mute)}
-.save{position:sticky;bottom:12px;display:flex;justify-content:flex-end;gap:10px;align-items:center}
+.save{position:fixed;right:14px;bottom:12px;z-index:6;display:flex;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;box-shadow:0 2px 12px rgba(0,0,0,.18)}
 .toast{font-size:13px;color:var(--mute)}
 .hide{display:none}
+.sub{font:700 13px 'Barlow Condensed',sans-serif;letter-spacing:.06em;text-transform:uppercase;margin:14px 0 6px;color:var(--mute)}
+.sum{background:var(--bg);border-left:3px solid var(--ink);padding:8px 10px;border-radius:0 8px 8px 0;font-size:14px;margin:0 0 12px}
+details.adv>summary{cursor:pointer;font:600 14px Barlow;padding:6px 0}
 </style>
 </head>
 <body>
@@ -63,6 +67,32 @@ td:first-child{font-weight:600;white-space:nowrap}
         <span style="flex:1"></span>
         <span class="row" id="pages"></span>
       </div>
+    </section>
+
+    <section class="card">
+      <h2>Layout</h2>
+      <label>Arrangement
+        <select name="layout" id="layoutSel" form="form">
+          <option value="quad">Four panels (2 &times; 2)</option>
+          <option value="five">Five panels (2 on top, 3 across the bottom)</option>
+        </select>
+      </label>
+      <div class="slots" id="slots" style="margin-top:10px"></div>
+      <p class="note">In the five-panel layout the bottom panels are about two-thirds as wide. Sports and lunch are designed for that; weather and news work best in the top row.</p>
+      <div class="row" style="margin-top:10px">
+        <label class="inline"><input type="checkbox" name="dark" form="form"> Dark mode (white on black)</label>
+      </div>
+      <div class="grid2" style="margin-top:10px">
+        <label>Weather/News/Sports/Lunch pages go back to the board after (s)<input type="number" name="page_timeout_s" form="form" min="20" max="3600"></label>
+      </div>
+      <p class="note">The Weather, News, Sports and Lunch buttons under the board show a bigger page for this long.</p>
+    </section>
+
+    <section class="card">
+      <h2>SMART tile</h2>
+      <p class="note" style="margin-top:0">Put <b>SMART (rotates)</b> in any slot above. It shows one of the tiles below (up to five) and moves to the next each time the board updates, so everything else can stay put. Only tiles that are not already on the board can be chosen.</p>
+      <div class="slots" id="smartSel"></div>
+      <p class="note" id="smartNote"></p>
     </section>
 
     <section class="card">
@@ -145,46 +175,46 @@ td:first-child{font-weight:600;white-space:nowrap}
 
   <form class="stack" id="form" onsubmit="return false">
     <section class="card">
-      <h2>Layout</h2>
-      <label>Arrangement
-        <select name="layout" id="layoutSel">
-          <option value="quad">Four panels (2 &times; 2)</option>
-          <option value="five">Five panels (2 on top, 3 across the bottom)</option>
-        </select>
-      </label>
-      <div class="slots" id="slots" style="margin-top:10px"></div>
-      <p class="note">In the five-panel layout the bottom panels are about two-thirds as wide. Sports and lunch are designed for that; weather and news work best in the top row.</p>
-      <div class="row" style="margin-top:10px">
-        <label class="inline"><input type="checkbox" name="dark"> Dark mode (white on black)</label>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>SMART tile</h2>
-      <p class="note" style="margin-top:0">Put <b>SMART (rotates)</b> in any slot above. It shows one of the three tiles below and moves to the next each time the board updates, so everything else can stay put. Only tiles that are not already on the board can be chosen.</p>
-      <div class="slots" id="smartSel"></div>
-      <p class="note" id="smartNote"></p>
-    </section>
-
-    <section class="card">
       <h2>Timing</h2>
-      <div class="grid3">
+      <p class="sum" id="timingSum"></p>
+
+      <div class="sub">Plugged in (the screen updates as it happens)</div>
+      <div class="grid2">
         <label>Update every (min)<input type="number" name="interval_min" min="1" max="120"></label>
-        <label>Plane corner every (min)<input type="number" name="sky_min" min="1" max="120"></label>
-        <label>Full refresh every (min)<input type="number" name="full_every_min" min="0" max="1440"></label>
-        <label>Quiet hours<input name="quiet" placeholder="23-6"></label>
-        <label>Detail page timeout (s)<input type="number" name="page_timeout_s" min="20" max="3600"></label>
         <label>Live game refresh (min)<input type="number" name="live_min" min="1" max="30"></label>
-        <label>Lunch tile shows tomorrow from (hour, 0-24)<input type="number" name="lunch_switch_hour" min="0" max="24"></label>
-        <label>Battery sleep wake-up (min)<input type="number" name="sleep_min" min="5" max="240"></label>
+      </div>
+      <label class="inline" style="margin-top:8px"><input type="checkbox" name="live_fast"> Refresh scores faster while a team is playing</label>
+
+      <div class="sub">On battery (sleeps between check-ins)</div>
+      <div class="grid2">
+        <label>Wake up every (min)<input type="number" name="sleep_min" min="5" max="240"></label>
         <label>Stay awake only above (V)<input type="number" name="awake_above_v" min="3.6" max="4.3" step="0.05"></label>
       </div>
-      <p class="note">On battery the tablet sleeps and wakes every <b>wake-up</b> minutes to check for news; a button press wakes it at once. It stays awake (Wi-Fi on, instant updates) only while its battery voltage is above the <b>stay awake</b> value, which happens while charging. Set it to 3.8 to stay awake until the battery is about half empty. Live game refresh only applies while awake.</p>
-      <label class="inline" style="margin-top:10px"><input type="checkbox" name="live_fast"> Refresh scores faster while a team is playing</label>
-      <label class="inline"><input type="checkbox" name="crisp"> Crisp mode: regular updates use a full refresh (brief flash, solid blacks)</label>
-      <label class="inline"><input type="checkbox" name="gray"> Greyscale full refreshes (smooth text, ~6s instead of ~3.5s)</label>
-      <div class="grid3" style="margin-top:8px"><label>Fast updates before a crisp one<input type="number" name="max_partials" min="0" max="50"></label></div>
-      <p class="note">Each update is a partial refresh of only the corners that changed (no flashing). The full refresh flashes once to wipe ghosting. Quiet hours pause updates, e.g. <b>23-6</b>.</p>
+      <p class="note">A button press wakes it at once. Between wake-ups the data is still collected every <b id="ivNote">10</b> min, so it is at most that old when the tablet looks. It stays awake (Wi-Fi on, instant updates) only while its battery voltage is above the <b>stay awake</b> value, which happens while charging; set it to 3.8 to stay awake until the battery is about half empty.</p>
+
+      <div class="sub">Quiet hours</div>
+      <div class="grid2"><label>From-to (24-hour, e.g. 23-6)<input name="quiet" placeholder="23-6"></label></div>
+      <label class="inline" style="margin-top:8px"><input type="checkbox" name="quiet_sleep"> Let the tablet sleep through quiet hours (it checks in again when they end; a button still wakes it)</label>
+      <p class="note">No scheduled updates, and no SMART rotation, during quiet hours; the screen keeps its last image.</p>
+
+      <details class="adv" style="margin-top:12px">
+        <summary>Advanced: screen refresh quality</summary>
+        <label class="inline" style="margin-top:8px"><input type="checkbox" name="crisp"> Crisp mode: regular updates use a full refresh (brief flash, solid blacks)</label>
+        <label class="inline"><input type="checkbox" name="gray"> Greyscale full refreshes (smooth text, ~6s instead of ~3.5s)</label>
+        <div class="grid2" style="margin-top:8px">
+          <label>Fast updates before a crisp one<input type="number" name="max_partials" min="0" max="50"></label>
+          <label>Full refresh at least every (min)<input type="number" name="full_every_min" min="0" max="1440"></label>
+        </div>
+        <p class="note">These only matter for small edits (a to-do or hearing change), because regular updates are already full refreshes while crisp mode is on. The defaults are fine.</p>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>School lunch</h2>
+      <div class="grid2">
+        <label>Show tomorrow from (hour, 0-24)<input type="number" name="lunch_switch_hour" min="0" max="24"></label>
+      </div>
+      <p class="note">From this hour on, the lunch tile lists tomorrow first. 24 = never.</p>
     </section>
 
     <section class="card">
@@ -196,7 +226,7 @@ td:first-child{font-weight:600;white-space:nowrap}
         <label>Latitude<input name="lat" type="number" step="0.0001"></label>
         <label>Longitude<input name="lon" type="number" step="0.0001"></label>
       </div>
-      <p class="note">Location also moves the plane radar and ISS/launch visibility.</p>
+      <p class="note">Location sets where the weather comes from.</p>
     </section>
 
     <section class="card">
@@ -256,15 +286,6 @@ td:first-child{font-weight:600;white-space:nowrap}
     </section>
 
     <section class="card">
-      <h2>Sky</h2>
-      <div class="grid2">
-        <label>Radar radius (nm)<input type="number" name="radar_nm" min="5" max="80"></label>
-      </div>
-      <label class="inline" style="margin-top:8px"><input type="checkbox" name="iss"> Space Station passes (30 min heads-up, visible passes only)</label>
-      <label class="inline"><input type="checkbox" name="launch"> Cape Canaveral launches you can see from here</label>
-    </section>
-
-    <section class="card">
       <h2>Notes from the note box</h2>
       <label class="inline"><input type="checkbox" name="notes"> Show notes sent to the note box (animated, then back to the board)</label>
       <label class="inline"><input type="checkbox" name="chime"> Chime when one arrives</label>
@@ -274,11 +295,11 @@ td:first-child{font-weight:600;white-space:nowrap}
       <p class="note" id="notesNote"></p>
     </section>
 
-    <div class="save">
-      <span class="toast" id="saved"></span>
-      <button type="button" onclick="save()">Save settings</button>
-    </div>
   </form>
+  <div class="save">
+    <span class="toast" id="saved"></span>
+    <button type="button" onclick="save()">Save settings</button>
+  </div>
 </main>
 <script>
 const qs = new URLSearchParams(location.search);
@@ -287,7 +308,7 @@ const base = location.pathname.replace(/\/?(index\.html)?$/, '');
 const api = (p) => `${base}${p}${p.includes('?') ? '&' : '?'}k=${encodeURIComponent(K || '')}`;
 let S = null, lastV = -1, dirty = false;
 const PAGE_NAMES = {quad:'Quad', weather:'Weather', news:'News', sports:'Sports', lunch:'Lunch'};
-const PANEL_LABELS = {weather:'Weather', news:'News & markets', sports:'Sports', sky:'Sky (planes)', lunch:'School lunch', calendar:'Calendar',
+const PANEL_LABELS = {weather:'Weather', news:'News & markets', sports:'Sports', lunch:'School lunch', calendar:'Calendar',
   volleyball:'Volleyball', countdown:'Countdown', verse:'Verse of the day', history:'This day in history', hearings:'Hearing Calendar', todo:'To-Do List',
   smart:'SMART (rotates)'};
 
@@ -421,11 +442,11 @@ function buildSlots(current, layout) {
 }
 function smartValues() { return [...document.querySelectorAll('#smartSel select')].map(s => s.value); }
 function buildSmart(chosen) {
-  // three pickers; each offers "(none)" and every tile that is not in one of the board's slots (SMART itself excluded)
+  // five pickers; each offers "(none)" and every tile that is not in one of the board's slots (SMART itself excluded)
   const box = document.getElementById('smartSel'); box.innerHTML = '';
   const used = [...document.querySelectorAll('#slots select')].map(s => s.value);
   const free = S.panels.filter(p => p !== 'smart' && !used.includes(p));
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 5; i++) {
     const s = document.createElement('select'); s.title = 'SMART tile, choice ' + (i + 1);
     s.add(new Option(`Rotation ${i + 1}: (none)`, ''));
     for (const p of free) s.add(new Option(`Rotation ${i + 1}: ${PANEL_LABELS[p] || p}`, p));
@@ -445,6 +466,18 @@ document.addEventListener('change', (e) => {
   buildSmart(smartValues());
 });
 
+function timingSummary() {
+  const v = (n) => { const el = document.querySelector(`[name="${n}"]`); return el ? el.value : ''; };
+  const iv = +v('interval_min') || 10, sl = +v('sleep_min') || 30, lm = +v('live_min') || 3, q = (v('quiet') || '').trim();
+  const live = document.querySelector('[name="live_fast"]');
+  const qm = q.match(/^(\d{1,2})\s*-\s*(\d{1,2})$/);
+  const sum = document.getElementById('timingSum'); if (!sum) return;
+  sum.innerHTML = `<b>On battery:</b> the screen can change at most every ${sl} min` +
+    (qm ? `, and not between ${qm[1]} and ${qm[2]} o’clock` : '') + `. <b>Plugged in:</b> every ${iv} min` +
+    (live && live.checked ? ` (every ${lm} min during a live game)` : '') + '.';
+  const n = document.getElementById('ivNote'); if (n) n.textContent = iv;
+}
+document.addEventListener('input', timingSummary);
 function fillForm(cfg) {
   const f = document.getElementById('form');
   const vs = document.getElementById('votdSel');
@@ -467,6 +500,7 @@ function fillForm(cfg) {
   }
   buildSlots(cfg.slots, cfg.layout);
   buildSmart(cfg.smart_tiles || []);
+  timingSummary();
   const mk = (id, map, chosen, name) => {
     const box = document.getElementById(id); box.innerHTML = '';
     for (const [k, lab] of Object.entries(map)) {
@@ -499,7 +533,7 @@ async function save() {
   document.getElementById('saved').textContent = j.error ? 'Error: ' + j.error : 'Saved ' + new Date().toLocaleTimeString();
   if (!j.error) { dirty = false; S.cfg = j.cfg; setTimeout(poll, 400); }
 }
-document.getElementById('form').addEventListener('input', () => { dirty = true; document.getElementById('saved').textContent = 'Unsaved changes'; });
+document.addEventListener('input', (e) => { if (e.target.form && e.target.form.id === 'form') { dirty = true; document.getElementById('saved').textContent = 'Unsaved changes'; } });
 
 function render() {
   const d = S.device;
@@ -567,7 +601,6 @@ function render() {
   const pName = {claude: 'Claude program', anthropic: 'Claude API', deepseek: 'DeepSeek'}[bs.provider] || bs.provider;
   const bModel = bl.model || (bs.provider === 'deepseek' ? S.cfg.deepseek_model : S.cfg.llm_model);
   const bAgo = bl.at ? ago(Math.round(Date.now() / 1000 - bl.at)) : '';
-  rows.push(['Plane feed', st(src.sky)]);
   rows.push([`Brief · ${esc(pName)} · ${esc(bModel)}`,
     !S.cfg.llm_brief ? 'off'
     : !bs.ready ? '<span style="color:var(--bad)">not available: key not set, or program not installed</span>'
@@ -596,8 +629,6 @@ function render() {
            : `<span style="color:var(--bad)">blocked or failing</span> · ${esc(r.detail)}`]);
   }
   if (nc.results.length) rows.push(['Connectivity test ran', ago(Math.round(Date.now() / 1000 - nc.at))]);
-  if (src.events && src.events.upcoming && src.events.upcoming.length)
-    rows.push(['Next sky event', src.events.upcoming.map(e => `${e.title} in ${Math.round(e.in_s/3600)}h (${e.confidence})`).join('<br>')]);
   rows.push(['Render', `${S.render_ms} ms · cycle ${S.cycle}`], ['Device', `${d.polls} polls · ${d.boots} boots · on v${d.version}`]);
   document.getElementById('health').innerHTML = rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
   document.getElementById('log').innerHTML = S.log.map(([t, s]) => `${hm(t)}  ${s}`).join('<br>');
