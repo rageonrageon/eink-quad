@@ -61,6 +61,39 @@ def replace(days: dict, path: str | None = None) -> dict:
     return clean
 
 
+def simple(path: str | None = None) -> dict:
+    """What the phone page needs: {"YYYY-MM-DD": "p" (in person) | "r" (remote)}."""
+    return {k: ("p" if v.get("in_person") else "r") for k, v in load(path).items() if isinstance(v, dict)}
+
+
+def set_day(date: str, value: str, today: dt.date, path: str | None = None) -> dict:
+    """Mark one day from the phone page. value: "p" in person, "r" remote, "x" no hearing.
+    Every other day is left exactly as it is (count and extra codes of an imported day are kept)."""
+    try:
+        d = dt.date.fromisoformat(date)
+    except (TypeError, ValueError):
+        raise ValueError("Pick a date")
+    if value not in ("p", "r", "x"):
+        raise ValueError("Choose in person, remote, or no hearing")
+    if d < today or (d - today).days > 400:
+        raise ValueError("That date is outside the calendar")
+    p = path or PATH
+    with _lock:
+        data = load(p)
+        if value == "x":
+            data.pop(date, None)
+        else:
+            old = data.get(date) if isinstance(data.get(date), dict) else {}
+            data[date] = {"in_person": value == "p", "count": old.get("count") or 1, "other": old.get("other") or []}
+        if len(data) > MAX_DAYS:
+            raise ValueError("Too many days saved")
+        tmp = p + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(dict(sorted(data.items())), f, indent=1)
+        os.replace(tmp, p)
+    return simple(p)
+
+
 def upcoming(today: dt.date, n: int = 3, path: str | None = None) -> list:
     """The next n hearing days, today included."""
     out = []

@@ -87,6 +87,12 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
 - **Hearing calendar** (private): data is loaded with `tools/import_hearings.py` (needs `pdfplumber`, `requests`),
   which sends only dates, an "in person" flag and a count to `POST /api/hearings`. The in-person code prefix is
   supplied at run time and is not in the repo. Always show the diff and ask the owner before sending.
+  **Phone calendar** (`server/web/hearings.html`): a separate mobile page at `/hearings?k=<key>` (key = the Railway
+  variable `QUAD_HEARINGS_KEY`; the admin token also works). It shows this month plus 6 more, weekdays only; tap a
+  date, choose In person / Remote / No hearing. It reads and writes one day at a time through
+  `/api/hearing-days` (GET returns `{date: "p"|"r"}`, POST `{date, value: p|r|x}`), leaving the other days (and an
+  imported day's count and extra codes) untouched. The phone key opens only that page and API, never the
+  settings page. Dates in the past or more than 400 days ahead are refused.
 - **SMART tile**: rotates through up to three chosen tiles that are not already on the board. The step moves once
   per update the tablet receives: on each main beat while awake, on each wake-up while asleep (throttled).
 - **Weather tile**: a big HIGH / LOW row under the description; the rain chart shows only when rain is possible
@@ -107,7 +113,7 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
 - **Private runtime files are git-ignored** (`config.json`, `state.json`, `agenda.json`, `countdowns.json`,
   `tv_local.json`, `hearings.json`, `todos.json`). Keep it that way.
 - **Environment variables** (names only; values live in Railway): `QUAD_TOKEN`, `QUAD_ADMIN`, `QUAD_BIND`,
-  `QUAD_PORT`, `QUAD_CONFIG`, `QUAD_STATE`, `QUAD_CONTACT`, `TZ` (a POSIX string such as `CST6CDT,M3.2.0,M11.1.0`,
+  `QUAD_PORT`, `QUAD_CONFIG`, `QUAD_STATE`, `QUAD_HEARINGS_KEY`, `QUAD_CONTACT`, `TZ` (a POSIX string such as `CST6CDT,M3.2.0,M11.1.0`,
   because the container has no tz database), `QUAD_ICAL_URL`, `QUAD_ICAL_URL_VOLLEYBALL`, `DEEPSEEK_API_KEY`,
   `ANTHROPIC_API_KEY`, `API_BIBLE_KEY`, and optional path overrides (`QUAD_AGENDA`, `QUAD_COUNTDOWNS`,
   `QUAD_TVLOCAL`, `QUAD_HEARINGS`, `QUAD_TODOS`, `QUAD_LUNCH`).

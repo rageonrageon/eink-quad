@@ -57,6 +57,8 @@ STATE_PATH = os.environ.get("QUAD_STATE", os.path.join(HERE, "state.json"))
 NOTES_DB = os.environ.get("QUAD_NOTES_DB", "")           # the note box's sqlite, optional
 NOTEBOX_DIR = os.environ.get("QUAD_NOTEBOX_DIR", "")     # to borrow its renderer
 DASH_HTML = os.path.join(HERE, "web", "dashboard.html")
+HEARINGS_HTML = os.path.join(HERE, "web", "hearings.html")
+HEARINGS_KEY = os.environ.get("QUAD_HEARINGS_KEY", "")      # opens only the phone calendar page (the admin link works there too)
 
 DEFAULTS = {
     "label": "Home",
@@ -642,6 +644,11 @@ class H(BaseHTTPRequestHandler):
         tok = self.q().get("k") or (self.headers.get("Authorization") or "").replace("Bearer ", "")
         return tok == ADMIN_TOKEN
 
+    def hearing_ok(self):
+        """The phone calendar's own key, or the admin token. Only the /hearings page and /api/hearing-days use it."""
+        tok = self.q().get("k") or ""
+        return bool(tok) and ((bool(HEARINGS_KEY) and tok == HEARINGS_KEY) or tok == ADMIN_TOKEN)
+
     def do_HEAD(self):
         self.do_GET()
 
@@ -652,6 +659,11 @@ class H(BaseHTTPRequestHandler):
                 return self.device_poll()
             if p == "/healthz":
                 return self.send(200, "ok", "text/plain")
+            if p in ("/hearings", "/hearings/") and self.hearing_ok():
+                with open(HEARINGS_HTML, "rb") as f:
+                    return self.send(200, f.read(), "text/html; charset=utf-8")
+            if p == "/api/hearing-days" and self.hearing_ok():
+                return self.send(200, {"days": hearings.simple()})
             if not self.admin():
                 return self.send(404, {"error": "not found"})
             if p in ("/", "/index.html"):
@@ -687,6 +699,18 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = self.route()
+        if p == "/api/hearing-days" and self.hearing_ok():      # the phone calendar: one day at a time
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(min(n, 10_000)) or b"{}")
+                import datetime as _dt
+                days = hearings.set_day(str(body.get("date", "")), str(body.get("value", "")), _dt.date.today())
+                board.take("hearings")
+                with board.cond:
+                    board.redraw("hearing calendar updated")
+                return self.send(200, {"days": days})
+            except Exception as e:
+                return self.send(400, {"error": str(e)})
         if not self.admin():
             return self.send(404, {"error": "not found"})
         try:
