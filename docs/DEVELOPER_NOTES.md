@@ -89,6 +89,7 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
 - **Hearing calendar** (private): data is loaded with `tools/import_hearings.py` (needs `pdfplumber`, `requests`),
   which sends only dates, an "in person" flag and a count to `POST /api/hearings`. The in-person code prefix is
   supplied at run time and is not in the repo. Always show the diff and ask the owner before sending.
+  The tile shows the next four hearing days (44 px rows; `hearings.upcoming(today, 4)` in `app.py`).
   **Phone calendar** (`server/web/hearings.html`): a separate mobile page at `/hearings?k=<key>` (key = the Railway
   variable `QUAD_HEARINGS_KEY`; the admin token also works). It shows this month plus 6 more, weekdays only; tap a
   date, choose In person / Remote / No hearing. It reads and writes one day at a time through

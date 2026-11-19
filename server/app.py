@@ -288,7 +288,7 @@ class Board:
             self.snap["agenda"] = sorted(evs, key=lambda o: (o.date, o.time or "00:00", o.title))
         elif name == "hearings":
             import datetime as _dt
-            self.snap["hearings"] = hearings.upcoming(_dt.date.today(), 3)
+            self.snap["hearings"] = hearings.upcoming(_dt.date.today(), 4)
         elif name == "todo":
             import datetime as _dt
             todo.prune(_dt.date.today(), int(cfg.get("todo_expire_days", 0) or 0))

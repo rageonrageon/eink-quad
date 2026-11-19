@@ -954,7 +954,7 @@ def panel_history(ctx: Ctx, size):
 
 
 def panel_hearings(ctx: Ctx, size):
-    """Hearing Calendar: the next three hearing days, each with its weekday, date, and a badge that says
+    """Hearing Calendar: the next four hearing days, each with its weekday, date, and a badge that says
     whether any hearing that day is in person (solid) or all are phone/video (outlined)."""
     c, d = canvas(size)
     w, h = size
@@ -965,25 +965,25 @@ def panel_hearings(ctx: Ctx, size):
         text(d, (w / 2, 30 + (h - 30) / 2 - 8), "No upcoming hearings", F("sb", 18), anchor="mm")
         text(d, (w / 2, 30 + (h - 30) / 2 + 14), "Load a schedule to see them", F("m", 14), anchor="mm")
         return c
-    rh = 58
-    y = 29
-    rows = max(1, min(3, int((h - 29) // rh)))
+    rh = 44
+    y = 28
+    rows = max(1, min(4, int((h - 28) // rh)))
     for i, day in enumerate(days[:rows]):
-        text(d, (12, y + 5), day.date.strftime("%a").upper(), F("cb", 30))
-        text(d, (72, y + 11), f"{day.date:%b} {day.date.day}", F("sb", 23))
+        text(d, (12, y + (rh - 30) // 2 - 2), day.date.strftime("%a").upper(), F("cb", 28))
+        text(d, (72, y + (rh - 23) // 2 + 1), f"{day.date:%b} {day.date.day}", F("sb", 23))
         label = "IN PERSON" if day.in_person else "REMOTE"
-        f = F("cb", 16)
-        bw = tw(d, label, f) + 18
-        x0, y0 = w - 12 - bw, y + 16
+        f = F("cb", 15)
+        bw = tw(d, label, f) + 16
+        x0, y0 = w - 12 - bw, y + (rh - 24) // 2
         if day.in_person:
             d.rounded_rectangle((x0, y0, w - 12, y0 + 24), radius=4, fill=INK)
-            d.text((x0 + 9, y0 + 12), label, font=f, fill=PAPER, anchor="lm")
+            d.text((x0 + 8, y0 + 12), label, font=f, fill=PAPER, anchor="lm")
         else:
             d.rounded_rectangle((x0, y0, w - 12, y0 + 24), radius=4, outline=INK, width=2)
-            d.text((x0 + 9, y0 + 12), label, font=f, fill=INK, anchor="lm")
+            d.text((x0 + 8, y0 + 12), label, font=f, fill=INK, anchor="lm")
         y += rh
         if i < rows - 1 and i < len(days) - 1:
-            dotted(d, 10, w - 10, int(y - 3), 3)
+            dotted(d, 10, w - 10, int(y - 2), 3)
     return c
 
 
