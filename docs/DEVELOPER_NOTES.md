@@ -101,8 +101,8 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
   cleaned up when the server starts. Do not re-add it unless asked.
 - **SMART tile**: rotates through up to five chosen tiles that are not already on the board. The step moves once
   per update the tablet receives: on each main beat while awake, on each wake-up while asleep (throttled).
-- **Weather tile**: a big HIGH / LOW row under the description; the rain chart shows only when rain is possible
-  (it is an empty frame on dry days).
+- **Weather tile**: a big HIGH / LOW row under the description; the 12-hour rain chart under the facts column is
+  skipped (space left blank) when every one of those hours is 0%; a single hour above 0% brings it back.
 - **The brief** (one line in the top bar): provider is a setting (Claude program, Claude API, or DeepSeek). It
   leaves sports out when the sports tile is on screen. DeepSeek needs thinking turned off or it returns an empty
   answer. The Health panel shows the provider, model, last result and the last prompt sent.

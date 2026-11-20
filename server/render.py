@@ -400,6 +400,8 @@ def _rain_bars(d, hourly, now, x0, x1, y0, y1):
     hrs = [hh for hh in hourly if hh[0] >= now - 1800][:12]
     if len(hrs) < 2 or x1 - x0 < 60:
         return
+    if max(hh[2] for hh in hrs) <= 0:      # a dry stretch: an empty chart says nothing, so leave the space blank
+        return
     fl = F("cm", 13)
     by1 = y1 - 13                      # bar baseline; hour labels below it
     bh = by1 - y0 - 13                 # headroom above for the peak label
