@@ -18,5 +18,20 @@
   "2026-11-24": ["Grilled Cheese Sandwich", "Ham & Cheese Hoagie"],
   "2026-11-25": {"closed": "No School"},
   "2026-11-26": {"closed": "Happy Thanksgiving"},
-  "2026-11-27": {"closed": "No School"}
+  "2026-11-27": {"closed": "No School"},
+  "2026-11-30": ["Crispy Chicken Sandwich", "Sunbutter & Jelly Sandwich w/ Cheese Stick"],
+  "2026-12-01": ["Cheese Dunkers with Pizza Sauce", "Italian Hoagie"],
+  "2026-12-02": ["Fried Chicken Drumstick with a Ciabatta Roll", "Chicken Salad on 9 Grain Bread"],
+  "2026-12-03": ["Walking Taco with Lettuce & Cheese", "Asian Chicken Wrap"],
+  "2026-12-04": ["French Toast Sticks with a Sausage Patty", "Turkey & Cheese Hoagie"],
+  "2026-12-07": ["Popcorn Chicken with Bread", "Sunbutter & Jelly Sandwich w/ Cheese Stick"],
+  "2026-12-08": ["Cheesy Nachos", "Ham & Cheese Hoagie"],
+  "2026-12-09": {"items": ["Pepperoni Pizza"], "from": "Godfather's"},
+  "2026-12-10": ["Sliced Ham with a Ciabatta Roll"],
+  "2026-12-11": ["Cheeseburger", "Turkey & Cheese Hoagie"],
+  "2026-12-14": ["Corn Dog", "Sunbutter & Jelly Sandwich w/ Cheese Stick"],
+  "2026-12-15": ["Texas Chili with a Cinnamon Roll", "Italian Hoagie"],
+  "2026-12-16": ["Chicken Fried Steak w/ Country Gravy with Bread", "Chicken Salad on 9 Grain Bread"],
+  "2026-12-17": ["Pancakes with a Sausage Patty", "Chicken Bacon Ranch Wrap"],
+  "2026-12-18": {"items": ["Chick-fil-A Sandwich"], "from": "Chick-fil-A"}
 }
