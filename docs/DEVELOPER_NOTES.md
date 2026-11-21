@@ -72,6 +72,13 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
   guessed from words like "vs" and "game".
 - **Countdown**: built-in holidays (tick boxes) plus custom ones (name, start, optional end for a break, yearly
   repeat). Stored in `countdowns.json`; changes apply at once, no Save button.
+- **Android mirror** (`server/web/display.html`, branch `android-display` until merged): `/display?k=<key>` shows
+  the same picture the e-ink tablet gets, full screen, for an old Android tablet (Chrome "Add to Home screen" or a
+  kiosk browser). Key = Railway variable `QUAD_DISPLAY_KEY` (the admin token also works); it opens only `/display`,
+  `/api/display/state` (`{"version": n}`) and `/api/display.png` (the grey render when the last refresh had one,
+  otherwise the 1-bit one). The page polls the version every 10 s, preloads the new picture and swaps it, keeps the
+  last picture and shows a small red dot after 3 failed polls, and asks the tablet to stay awake. It is not the
+  e-ink device: it does not touch battery/mode decisions or `board.device`. It is the 800x480 picture scaled up.
 - **To-Do List** (`todo.py`): tasks live in `todos.json` on the volume (git-ignored), added on the settings page
   (title plus optional due date). Shown in the order added with an empty tick box. "Done" hides a task from the
   screen but keeps it greyed in the settings list until "Clear done" (so a mis-tap can be undone). Setting
@@ -119,7 +126,7 @@ Nothing private belongs in this file: no keys, admin links, schedule data, or pe
 - **Private runtime files are git-ignored** (`config.json`, `state.json`, `agenda.json`, `countdowns.json`,
   `tv_local.json`, `hearings.json`, `todos.json`). Keep it that way.
 - **Environment variables** (names only; values live in Railway): `QUAD_TOKEN`, `QUAD_ADMIN`, `QUAD_BIND`,
-  `QUAD_PORT`, `QUAD_CONFIG`, `QUAD_STATE`, `QUAD_HEARINGS_KEY`, `QUAD_CONTACT`, `TZ` (a POSIX string such as `CST6CDT,M3.2.0,M11.1.0`,
+  `QUAD_PORT`, `QUAD_CONFIG`, `QUAD_STATE`, `QUAD_HEARINGS_KEY`, `QUAD_DISPLAY_KEY`, `QUAD_CONTACT`, `TZ` (a POSIX string such as `CST6CDT,M3.2.0,M11.1.0`,
   because the container has no tz database), `QUAD_ICAL_URL`, `QUAD_ICAL_URL_VOLLEYBALL`, `DEEPSEEK_API_KEY`,
   `ANTHROPIC_API_KEY`, `API_BIBLE_KEY`, and optional path overrides (`QUAD_AGENDA`, `QUAD_COUNTDOWNS`,
   `QUAD_TVLOCAL`, `QUAD_HEARINGS`, `QUAD_TODOS`, `QUAD_LUNCH`).

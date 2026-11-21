@@ -57,6 +57,8 @@ NOTEBOX_DIR = os.environ.get("QUAD_NOTEBOX_DIR", "")     # to borrow its rendere
 DASH_HTML = os.path.join(HERE, "web", "dashboard.html")
 HEARINGS_HTML = os.path.join(HERE, "web", "hearings.html")
 HEARINGS_KEY = os.environ.get("QUAD_HEARINGS_KEY", "")      # opens only the phone calendar page (the admin link works there too)
+DISPLAY_HTML = os.path.join(HERE, "web", "display.html")
+DISPLAY_KEY = os.environ.get("QUAD_DISPLAY_KEY", "")        # opens only the mirror page for an Android tablet (the admin link works there too)
 
 DEFAULTS = {
     "label": "Home",
@@ -631,6 +633,11 @@ class H(BaseHTTPRequestHandler):
         tok = self.q().get("k") or ""
         return bool(tok) and ((bool(HEARINGS_KEY) and tok == HEARINGS_KEY) or tok == ADMIN_TOKEN)
 
+    def display_ok(self):
+        """The mirror page's own key, or the admin token. Only /display and its two /api/display links use it."""
+        tok = self.q().get("k") or ""
+        return bool(tok) and ((bool(DISPLAY_KEY) and tok == DISPLAY_KEY) or tok == ADMIN_TOKEN)
+
     def do_HEAD(self):
         self.do_GET()
 
@@ -646,6 +653,15 @@ class H(BaseHTTPRequestHandler):
                     return self.send(200, f.read(), "text/html; charset=utf-8")
             if p == "/api/hearing-days" and self.hearing_ok():
                 return self.send(200, {"days": hearings.simple()})
+            if p in ("/display", "/display/") and self.display_ok():          # mirror page for an Android tablet
+                with open(DISPLAY_HTML, "rb") as f:
+                    return self.send(200, f.read(), "text/html; charset=utf-8")
+            if p == "/api/display/state" and self.display_ok():
+                return self.send(200, {"version": board.version})
+            if p == "/api/display.png" and self.display_ok():
+                with board.cond:
+                    img, v = (board.final_gray if board.final_gray is not None else board.final), board.version
+                return self.png(img, {"X-Version": v})
             if not self.admin():
                 return self.send(404, {"error": "not found"})
             if p in ("/", "/index.html"):

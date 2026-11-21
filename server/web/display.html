@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Board</title>
+<style>
+  html, body { margin:0; height:100%; background:#fff; overflow:hidden; }
+  body { cursor:none; }
+  #b { position:fixed; inset:0; width:100vw; height:100vh; object-fit:contain; image-rendering:auto; user-select:none; -webkit-user-drag:none; }
+  #dot { position:fixed; right:8px; bottom:8px; width:10px; height:10px; border-radius:50%; background:#c0392b; opacity:0; transition:opacity .3s; }
+  #dot.on { opacity:.85; }
+</style>
+</head>
+<body>
+<img id="b" alt="">
+<div id="dot" title="Can't reach the server"></div>
+<script>
+/*API*/
+const K = new URLSearchParams(location.search).get('k') || '';
+const root = location.pathname.replace(/\/display\/?$/, '');
+const stateUrl = () => `${root}/api/display/state?k=${encodeURIComponent(K)}`;
+const imageUrl = (v) => `${root}/api/display.png?k=${encodeURIComponent(K)}&v=${v}`;
+/*END API*/
+
+const POLL_MS = 10000;
+let version = null, fails = 0;
+const img = document.getElementById('b'), dot = document.getElementById('dot');
+
+async function tick() {
+  try {
+    const r = await fetch(stateUrl(), {cache: 'no-store'});
+    if (!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    fails = 0; dot.classList.remove('on');
+    if (j.version !== version) {                       // preload, then swap, so the picture never flashes blank
+      const next = new Image();
+      next.onload = () => { img.src = next.src; version = j.version; };
+      next.src = imageUrl(j.version);
+    }
+  } catch (e) {
+    if (++fails >= 3) dot.classList.add('on');          // keep the last picture; just show a small red dot
+  }
+}
+tick(); setInterval(tick, POLL_MS);
+
+// tap once for full screen; ask the tablet not to dim while this page is open
+document.addEventListener('click', () => { try { document.documentElement.requestFullscreen(); } catch (e) {} });
+async function keepAwake() { try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) {} }
+keepAwake(); document.addEventListener('visibilitychange', () => { if (!document.hidden) keepAwake(); });
+</script>
+</body>
+</html>
